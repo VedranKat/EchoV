@@ -50,6 +50,7 @@ actor FluidAudioParakeetEngine: ASREngine {
 
         do {
             let fluidAudioModelURL = try ParakeetLocalModelLayout.localFluidAudioFolder(for: modelURL)
+            DiagnosticLog.write("AsrModels.load starting path=\(fluidAudioModelURL.path) compute=\(computeMode.rawValue)")
             let configuration = MLModelConfiguration()
             configuration.computeUnits = computeMode.computeUnits
             let models = try await AsrModels.load(
@@ -60,11 +61,15 @@ actor FluidAudioParakeetEngine: ASREngine {
                     self?.publish(progress)
                 }
             )
+            DiagnosticLog.write("AsrModels.load completed")
             let manager = AsrManager(config: .default)
+            DiagnosticLog.write("AsrManager.loadModels starting")
             try await manager.loadModels(models)
+            DiagnosticLog.write("AsrManager.loadModels completed")
             asrManager = manager
             return manager
         } catch {
+            DiagnosticLog.write("FluidAudioParakeetEngine load failed: \(error.localizedDescription)")
             throw AppError.modelLoadFailed(details: error.localizedDescription)
         }
     }
@@ -78,6 +83,7 @@ actor FluidAudioParakeetEngine: ASREngine {
             phase = "Preparing local model"
         case .downloading(_, let totalFiles):
             if totalFiles > 0 {
+                DiagnosticLog.write("Unexpected FluidAudio remote-fetch progress fraction=\(progress.fractionCompleted) totalFiles=\(totalFiles)")
                 onStatusUpdate?("Unexpected remote model fetch blocked by local-only setup")
                 return
             }
@@ -86,6 +92,7 @@ actor FluidAudioParakeetEngine: ASREngine {
             phase = "Compiling \(modelName)"
         }
 
+        DiagnosticLog.write("FluidAudio progress: \(phase) percent=\(percent)")
         onStatusUpdate?("\(phase) (\(percent)%)")
     }
 }

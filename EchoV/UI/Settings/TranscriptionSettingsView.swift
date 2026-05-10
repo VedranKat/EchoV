@@ -8,7 +8,7 @@ struct TranscriptionSettingsView: View {
             Section("Local ASR Model") {
                 LabeledContent("Selected model", value: container.modelStore.selectedASRModel?.displayName ?? "None")
                 LabeledContent("Status", value: container.modelStore.validation.message)
-                Text("Choose \(ParakeetLocalModelLayout.expectedFolderName), or the parent folder that contains it. EchoV only loads local model files.")
+                Text("Choose \(ParakeetLocalModelLayout.downloadFolderName), \(ParakeetLocalModelLayout.expectedFolderName), or their parent folder. EchoV only loads local model files.")
                     .foregroundStyle(.secondary)
                 Button("Select Local Model Folder...") {
                     selectModelFolder()

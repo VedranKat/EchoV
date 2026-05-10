@@ -135,18 +135,22 @@ final class AppContainer {
 
     private func preloadASRModel() {
         appState.lastDetail = "Loading ASR model..."
+        DiagnosticLog.write("preloadASRModel started")
         appState.notifyStatusChanged()
 
         Task {
             do {
                 try await pipeline.prepareASR()
+                DiagnosticLog.write("preloadASRModel completed")
                 appState.lastDetail = "ASR model ready."
                 appState.notifyStatusChanged()
             } catch let error as AppError {
+                DiagnosticLog.write("preloadASRModel AppError: \(error.userMessage) details=\(error.technicalDetails ?? "none")")
                 appState.lastError = error
                 appState.lastDetail = error.userMessage
                 appState.notifyStatusChanged()
             } catch {
+                DiagnosticLog.write("preloadASRModel Error: \(error.localizedDescription)")
                 appState.lastError = .modelLoadFailed(details: error.localizedDescription)
                 appState.lastDetail = "ASR model failed to load."
                 appState.notifyStatusChanged()
