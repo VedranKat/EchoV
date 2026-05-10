@@ -7,14 +7,6 @@ actor FluidAudioParakeetEngine: ASREngine {
     nonisolated let displayName = "FluidAudio Parakeet"
     nonisolated(unsafe) var onStatusUpdate: (@Sendable (String) -> Void)?
 
-    private let expectedFluidAudioFolderName = "parakeet-tdt-0.6b-v3"
-    private let requiredLocalFiles = [
-        "Preprocessor.mlmodelc/coremldata.bin",
-        "Encoder.mlmodelc/coremldata.bin",
-        "Decoder.mlmodelc/coremldata.bin",
-        "JointDecisionv3.mlmodelc/coremldata.bin",
-        "parakeet_vocab.json"
-    ]
     private let modelURL: URL
     private let computeMode: ASRComputeMode
     private var asrManager: AsrManager?
@@ -57,8 +49,7 @@ actor FluidAudioParakeetEngine: ASREngine {
         }
 
         do {
-            let fluidAudioModelURL = try localFluidAudioModelURL()
-            try validateLocalModelFiles(at: fluidAudioModelURL)
+            let fluidAudioModelURL = try ParakeetLocalModelLayout.localFluidAudioFolder(for: modelURL)
             let configuration = MLModelConfiguration()
             configuration.computeUnits = computeMode.computeUnits
             let models = try await AsrModels.load(
@@ -78,45 +69,17 @@ actor FluidAudioParakeetEngine: ASREngine {
         }
     }
 
-    private func localFluidAudioModelURL() throws -> URL {
-        if modelURL.lastPathComponent == expectedFluidAudioFolderName {
-            return modelURL
-        }
-
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        let linkDirectory = appSupport.appendingPathComponent("EchoV/ModelLinks", isDirectory: true)
-        try FileManager.default.createDirectory(at: linkDirectory, withIntermediateDirectories: true)
-
-        let linkURL = linkDirectory.appendingPathComponent(expectedFluidAudioFolderName, isDirectory: true)
-
-        if FileManager.default.fileExists(atPath: linkURL.path) {
-            try FileManager.default.removeItem(at: linkURL)
-        }
-
-        try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: modelURL)
-        return linkURL
-    }
-
-    private func validateLocalModelFiles(at url: URL) throws {
-        let missingFiles = requiredLocalFiles.filter { relativePath in
-            !FileManager.default.fileExists(atPath: url.appendingPathComponent(relativePath).path)
-        }
-
-        guard missingFiles.isEmpty else {
-            throw AppError.modelPathInvalid(details: "Missing local model files: \(missingFiles.joined(separator: ", "))")
-        }
-    }
-
     private nonisolated func publish(_ progress: DownloadUtils.DownloadProgress) {
         let percent = Int((progress.fractionCompleted * 100).rounded())
         let phase: String
 
         switch progress.phase {
         case .listing:
-            phase = "Listing model files"
+            phase = "Checking local model files"
         case .downloading(let completedFiles, let totalFiles):
-            phase = "Loading model files \(completedFiles)/\(totalFiles)"
+            phase = totalFiles > 0
+                ? "Loading local model files \(completedFiles)/\(totalFiles)"
+                : "Loading local model files"
         case .compiling(let modelName):
             phase = "Compiling \(modelName)"
         }

@@ -46,4 +46,23 @@ enum AppError: LocalizedError, Equatable {
             "Something went wrong."
         }
     }
+
+    var technicalDetails: String? {
+        switch self {
+        case .hotkeyUnavailable(let details),
+             .modelPathInvalid(let details),
+             .modelLoadFailed(let details),
+             .recordingFailed(let details),
+             .transcriptionFailed(let details),
+             .insertionFailed(let details),
+             .unknown(let details):
+            details
+        case .microphonePermissionDenied,
+             .accessibilityPermissionDenied,
+             .modelNotSelected,
+             .recordingTooShort,
+             .transcriptionTimedOut:
+            nil
+        }
+    }
 }

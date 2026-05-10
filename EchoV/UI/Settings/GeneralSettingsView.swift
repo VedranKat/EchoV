@@ -13,10 +13,18 @@ struct GeneralSettingsView: View {
 
             Section("Permissions") {
                 LabeledContent("Microphone", value: microphoneStatus)
-                LabeledContent("Accessibility", value: container.accessibilityPermission.isTrusted() ? "Allowed" : "Needed for paste insertion")
+                Button("Request Microphone Access") {
+                    requestMicrophoneAccess()
+                }
+                .disabled(container.microphonePermission.authorizationStatus() == .authorized)
+
+                LabeledContent("Accessibility", value: accessibilityStatus)
                 Button("Request Accessibility Access") {
                     container.accessibilityPermission.promptForAccess()
                 }
+                .disabled(container.accessibilityPermission.isTrusted())
+                Text("Accessibility lets EchoV paste the transcript into the active app. Without it, the transcript stays on the clipboard.")
+                    .foregroundStyle(.secondary)
             }
         }
         .padding()
@@ -35,4 +43,13 @@ struct GeneralSettingsView: View {
         }
     }
 
+    private var accessibilityStatus: String {
+        container.accessibilityPermission.isTrusted() ? "Allowed" : "Needed for paste insertion"
+    }
+
+    private func requestMicrophoneAccess() {
+        Task {
+            _ = await container.microphonePermission.requestAccess()
+        }
+    }
 }

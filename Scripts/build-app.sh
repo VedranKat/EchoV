@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIGURATION="${CONFIGURATION:-release}"
 SCRATCH_PATH="${SCRATCH_PATH:-"$ROOT_DIR/.build-app"}"
+CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
 APP_DIR="$ROOT_DIR/dist/EchoV.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -26,8 +27,9 @@ printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
 codesign \
   --force \
-  --sign - \
+  --sign "$CODE_SIGN_IDENTITY" \
   --entitlements "$ROOT_DIR/Packaging/EchoV.entitlements" \
   "$APP_DIR"
 
 echo "Built $APP_DIR"
+echo "Signed with: $CODE_SIGN_IDENTITY"

@@ -2,6 +2,8 @@ import Foundation
 
 @MainActor
 final class DictationPipeline {
+    private static let transcriptionTimeoutSeconds: UInt64 = 300
+
     private let appState: AppState
     private let recorder: any AudioRecorder
     private let normalizer: AudioNormalizer
@@ -93,7 +95,7 @@ final class DictationPipeline {
             lastNormalizedAudioURL = normalizedAudioURL
             appState.lastDetail = audioDetail(for: normalizedAudioURL)
             setState(.transcribing(status: "Loading model / transcribing..."))
-            let transcript = try await withTimeout(seconds: 45) {
+            let transcript = try await withTimeout(seconds: Self.transcriptionTimeoutSeconds) {
                 try await self.asrEngine.transcribe(
                     audioURL: normalizedAudioURL,
                     options: ASROptions()

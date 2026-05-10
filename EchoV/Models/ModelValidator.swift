@@ -16,52 +16,34 @@ struct ModelValidationResult: Equatable, Sendable {
 
 struct ParakeetModelValidator: ModelValidator {
     func validateASRModel(at url: URL) async -> ModelValidationResult {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        guard ParakeetLocalModelLayout.isDirectory(url) else {
             return ModelValidationResult(isValid: false, message: "Selected path is not a folder.")
         }
 
-        let requiredNames = ["parakeet_vocab.json"]
+        guard let modelURL = ParakeetLocalModelLayout.modelFolderCandidate(for: url) else {
+            if let closestModelURL = ParakeetLocalModelLayout.existingModelFolderCandidates(for: url).first {
+                let missing = ParakeetLocalModelLayout.missingFiles(at: closestModelURL)
+                return ModelValidationResult(isValid: false, message: "Missing: \(missing.joined(separator: ", "))")
+            }
 
-        let missing = requiredNames.filter { name in
-            !FileManager.default.fileExists(atPath: url.appendingPathComponent(name).path)
+            return ModelValidationResult(
+                isValid: false,
+                message: "Select \(ParakeetLocalModelLayout.expectedFolderName), or its parent folder."
+            )
         }
 
+        let missing = ParakeetLocalModelLayout.missingFiles(at: modelURL)
         guard missing.isEmpty else {
             return ModelValidationResult(isValid: false, message: "Missing: \(missing.joined(separator: ", "))")
         }
 
-        let hasCoreMLAsset = hasFile(withExtension: "mlmodelc", under: url)
-            || hasFile(withExtension: "mlpackage", under: url)
-            || hasFile(withExtension: "mlmodel", under: url)
-
-        guard hasCoreMLAsset else {
+        if modelURL.lastPathComponent == ParakeetLocalModelLayout.expectedFolderName {
+            return ModelValidationResult(isValid: true, message: "Local Parakeet model is ready.")
+        } else {
             return ModelValidationResult(
-                isValid: false,
-                message: "No Core ML model asset found."
+                isValid: true,
+                message: "Local Parakeet model is ready; EchoV will use a local folder-name link for FluidAudio."
             )
         }
-
-        return ModelValidationResult(isValid: true, message: "Model folder looks usable.")
-    }
-
-    private func hasFile(withExtension fileExtension: String, under url: URL) -> Bool {
-        guard
-            let enumerator = FileManager.default.enumerator(
-                at: url,
-                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )
-        else {
-            return false
-        }
-
-        for case let fileURL as URL in enumerator {
-            if fileURL.pathExtension == fileExtension {
-                return true
-            }
-        }
-
-        return false
     }
 }

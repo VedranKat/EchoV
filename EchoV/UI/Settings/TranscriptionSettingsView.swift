@@ -8,6 +8,8 @@ struct TranscriptionSettingsView: View {
             Section("Local ASR Model") {
                 LabeledContent("Selected model", value: container.modelStore.selectedASRModel?.displayName ?? "None")
                 LabeledContent("Status", value: container.modelStore.validation.message)
+                Text("Choose \(ParakeetLocalModelLayout.expectedFolderName), or the parent folder that contains it. EchoV only loads local model files.")
+                    .foregroundStyle(.secondary)
                 Button("Select Local Model Folder...") {
                     selectModelFolder()
                 }
@@ -15,11 +17,6 @@ struct TranscriptionSettingsView: View {
                     container.clearASRModelSelection()
                 }
                 .disabled(container.modelStore.selectedASRModel == nil)
-            }
-
-            Section("Engine") {
-                Text("MVP will use FluidAudio with a manually selected local Parakeet model.")
-                    .foregroundStyle(.secondary)
             }
         }
         .padding()

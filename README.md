@@ -24,6 +24,12 @@ bash Scripts/build-app.sh
 
 The app bundle is written to `dist/EchoV.app`.
 
+By default the bundle is ad-hoc signed. To use a stable local signing identity for macOS permissions:
+
+```sh
+CODE_SIGN_IDENTITY="Developer ID Application: Your Name" bash Scripts/build-app.sh
+```
+
 ## Run
 
 ```sh
