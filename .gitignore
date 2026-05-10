@@ -1,0 +1,9 @@
+.build/
+.build-fluid/
+.build-app/
+.swiftpm/
+DerivedData/
+dist/
+*.xcuserdata/
+*.xcuserstate
+.DS_Store
