@@ -5,6 +5,14 @@ struct TranscriptionSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Install Model") {
+                LabeledContent("EchoV model", value: container.modelStore.installState.message)
+                Button(container.modelStore.installState.isInstalling ? "Installing..." : "Download and Install Model") {
+                    installManagedModel()
+                }
+                .disabled(container.modelStore.installState.isInstalling)
+            }
+
             Section("Local ASR Model") {
                 LabeledContent("Selected model", value: container.modelStore.selectedASRModel?.displayName ?? "None")
                 LabeledContent("Status", value: container.modelStore.validation.message)
@@ -20,6 +28,12 @@ struct TranscriptionSettingsView: View {
             }
         }
         .padding()
+    }
+
+    private func installManagedModel() {
+        Task {
+            await container.installManagedASRModel()
+        }
     }
 
     private func selectModelFolder() {

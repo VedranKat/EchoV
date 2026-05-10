@@ -4,6 +4,14 @@ enum ParakeetLocalModelLayout {
     static let expectedFolderName = "parakeet-tdt-0.6b-v3"
     static let downloadFolderName = "parakeet-tdt-0.6b-v3-coreml"
 
+    static var managedModelURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return appSupport
+            .appendingPathComponent("EchoV/Models", isDirectory: true)
+            .appendingPathComponent(expectedFolderName, isDirectory: true)
+    }
+
     static let requiredFiles = [
         "Preprocessor.mlmodelc/coremldata.bin",
         "Encoder.mlmodelc/coremldata.bin",

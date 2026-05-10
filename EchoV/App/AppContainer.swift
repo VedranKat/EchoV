@@ -105,6 +105,11 @@ final class AppContainer {
         configureASREngineFromSelectedModel()
     }
 
+    func installManagedASRModel() async {
+        await modelStore.installManagedASRModel()
+        configureASREngineFromSelectedModel()
+    }
+
     func clearASRModelSelection() {
         modelStore.clearSelection()
         pipeline.setASREngine(UnconfiguredASREngine())

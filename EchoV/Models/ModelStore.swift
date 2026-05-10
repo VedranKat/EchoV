@@ -5,17 +5,21 @@ import Observation
 @Observable
 final class ModelStore {
     private let validator: any ModelValidator
+    private let installer: ParakeetModelInstaller
     private let userDefaults: UserDefaults
     private let bookmarkKey = "selectedASRModelBookmark"
 
     var selectedASRModel: ASRModelSelection?
     var validation: ModelValidationResult = .notSelected
+    var installState: ModelInstallState = .idle
 
     init(
         validator: any ModelValidator = ParakeetModelValidator(),
+        installer: ParakeetModelInstaller = ParakeetModelInstaller(),
         userDefaults: UserDefaults = .standard
     ) {
         self.validator = validator
+        self.installer = installer
         self.userDefaults = userDefaults
     }
 
@@ -23,6 +27,7 @@ final class ModelStore {
         guard let bookmarkData = userDefaults.data(forKey: bookmarkKey) else {
             selectedASRModel = nil
             validation = .notSelected
+            await refreshManagedInstallState()
             return
         }
 
@@ -47,6 +52,8 @@ final class ModelStore {
                 message: "Saved model bookmark could not be restored."
             )
         }
+
+        await refreshManagedInstallState()
     }
 
     func selectASRModel(at url: URL) async {
@@ -76,6 +83,34 @@ final class ModelStore {
             selectedAt: Date(),
             validation: result
         )
+    }
+
+    func installManagedASRModel() async {
+        guard !installState.isInstalling else {
+            return
+        }
+
+        installState = .installing("Starting model download...")
+
+        do {
+            let url = try await installer.install { [weak self] detail in
+                Task { @MainActor in
+                    self?.installState = .installing(detail)
+                }
+            }
+            installState = .installed
+            await selectASRModel(at: url)
+        } catch {
+            let message = "Model install failed: \(error.localizedDescription)"
+            DiagnosticLog.write(message)
+            installState = .failed(message)
+        }
+    }
+
+    func refreshManagedInstallState() async {
+        let managedURL = ParakeetLocalModelLayout.managedModelURL
+        let result = await validator.validateASRModel(at: managedURL)
+        installState = result.isValid ? .installed : .idle
     }
 
     func clearSelection() {
