@@ -4,47 +4,116 @@ struct GeneralSettingsView: View {
     @Environment(AppContainer.self) private var container
 
     var body: some View {
-        Form {
-            Section("Dictation") {
-                LabeledContent("Hotkey", value: container.settings.hotkey.displayName)
-                Toggle("Store transcript history locally", isOn: Bindable(container.settings).isHistoryEnabled)
-                Toggle("Delete temporary audio after transcription", isOn: Bindable(container.settings).shouldDeleteTemporaryAudio)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                PageHeader(
+                    title: "Dictation",
+                    subtitle: "Control how EchoV records, stores, and inserts transcripts."
+                )
 
-            Section("Permissions") {
-                LabeledContent("Microphone", value: microphoneStatus)
-                Button("Request Microphone Access") {
-                    requestMicrophoneAccess()
-                }
-                .disabled(container.microphonePermission.authorizationStatus() == .authorized)
+                SettingsCard("Recording") {
+                    VStack(spacing: 12) {
+                        SettingsRow(
+                            icon: "keyboard",
+                            title: "Hotkey",
+                            subtitle: "Global shortcut for starting and stopping dictation."
+                        ) {
+                            KeyboardShortcutChip(text: container.settings.hotkey.displayName)
+                        }
 
-                LabeledContent("Accessibility", value: accessibilityStatus)
-                Button("Request Accessibility Access") {
-                    container.accessibilityPermission.promptForAccess()
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "text.bubble",
+                            title: "Store transcript history",
+                            subtitle: "Keep transcripts locally on this Mac."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).isHistoryEnabled)
+                                .labelsHidden()
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "trash",
+                            title: "Delete temporary audio",
+                            subtitle: "Remove captured audio after transcription completes."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).shouldDeleteTemporaryAudio)
+                                .labelsHidden()
+                        }
+                    }
                 }
-                .disabled(container.accessibilityPermission.isTrusted())
-                Text("Accessibility lets EchoV paste the transcript into the active app. Without it, the transcript stays on the clipboard.")
-                    .foregroundStyle(.secondary)
+
+                SettingsCard("Permissions", subtitle: "EchoV needs microphone access to listen and accessibility access to paste into other apps.") {
+                    VStack(spacing: 12) {
+                        SettingsRow(
+                            icon: "mic.fill",
+                            title: "Microphone",
+                            subtitle: microphoneHelpText
+                        ) {
+                            HStack(spacing: 8) {
+                                StatusBadge(text: microphoneStatus.text, tone: microphoneStatus.tone)
+                                Button("Request") {
+                                    requestMicrophoneAccess()
+                                }
+                                .disabled(container.microphonePermission.authorizationStatus() == .authorized)
+                            }
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "cursorarrow.motionlines",
+                            title: "Accessibility",
+                            subtitle: "Allows EchoV to paste the transcript into the active app."
+                        ) {
+                            HStack(spacing: 8) {
+                                StatusBadge(text: accessibilityStatus.text, tone: accessibilityStatus.tone)
+                                Button("Open") {
+                                    container.accessibilityPermission.promptForAccess()
+                                }
+                                .disabled(container.accessibilityPermission.isTrusted())
+                            }
+                        }
+                    }
+                }
             }
+            .padding(24)
         }
-        .padding()
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private var microphoneStatus: String {
+    private var microphoneStatus: (text: String, tone: StatusBadge.Tone) {
         switch container.microphonePermission.authorizationStatus() {
         case .authorized:
-            "Allowed"
+            ("Allowed", .success)
         case .denied, .restricted:
-            "Denied"
+            ("Denied", .danger)
         case .notDetermined:
-            "Not requested"
+            ("Not requested", .warning)
         @unknown default:
-            "Unknown"
+            ("Unknown", .warning)
         }
     }
 
-    private var accessibilityStatus: String {
-        container.accessibilityPermission.isTrusted() ? "Allowed" : "Needed for paste insertion"
+    private var microphoneHelpText: String {
+        switch container.microphonePermission.authorizationStatus() {
+        case .authorized:
+            "Ready to capture dictation audio."
+        case .denied, .restricted:
+            "Enable access in System Settings to record."
+        case .notDetermined:
+            "Permission has not been requested yet."
+        @unknown default:
+            "Permission status is unavailable."
+        }
+    }
+
+    private var accessibilityStatus: (text: String, tone: StatusBadge.Tone) {
+        container.accessibilityPermission.isTrusted()
+            ? ("Allowed", .success)
+            : ("Needed", .warning)
     }
 
     private func requestMicrophoneAccess() {

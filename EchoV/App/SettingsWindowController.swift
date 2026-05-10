@@ -24,12 +24,15 @@ final class SettingsWindowController {
             .environment(container)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 540),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "EchoV Settings"
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.minSize = NSSize(width: 720, height: 500)
         window.center()
         window.contentView = NSHostingView(rootView: rootView)
         window.isReleasedWhenClosed = false
