@@ -75,7 +75,6 @@ actor FluidAudioParakeetEngine: ASREngine {
     }
 
     private nonisolated func publish(_ progress: DownloadUtils.DownloadProgress) {
-        let percent = Int((progress.fractionCompleted * 100).rounded())
         let phase: String
 
         switch progress.phase {
@@ -92,7 +91,7 @@ actor FluidAudioParakeetEngine: ASREngine {
             phase = "Compiling \(modelName)"
         }
 
-        DiagnosticLog.write("FluidAudio progress: \(phase) percent=\(percent)")
-        onStatusUpdate?("\(phase) (\(percent)%)")
+        DiagnosticLog.write("FluidAudio progress: \(phase)")
+        onStatusUpdate?(phase)
     }
 }

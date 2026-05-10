@@ -19,13 +19,11 @@ struct ParakeetModelInstaller: Sendable {
     }
 
     private static func message(for progress: DownloadUtils.DownloadProgress) -> String {
-        let percent = Int((progress.fractionCompleted * 100).rounded())
-
         switch progress.phase {
         case .listing:
             return "Finding model files..."
         case .downloading(let completedFiles, let totalFiles):
-            return "Downloading model \(completedFiles)/\(totalFiles) (\(percent)%)"
+            return "Downloading model \(completedFiles)/\(totalFiles)"
         case .compiling(let modelName):
             return modelName.isEmpty ? "Finishing install..." : "Preparing \(modelName)..."
         }
