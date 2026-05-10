@@ -12,6 +12,13 @@ enum ParakeetLocalModelLayout {
         "parakeet_vocab.json"
     ]
 
+    static let requiredModelBundles = [
+        "Preprocessor.mlmodelc",
+        "Encoder.mlmodelc",
+        "Decoder.mlmodelc",
+        "JointDecisionv3.mlmodelc"
+    ]
+
     static func isDirectory(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
@@ -19,6 +26,12 @@ enum ParakeetLocalModelLayout {
 
     static func missingFiles(at url: URL) -> [String] {
         requiredFiles.filter { relativePath in
+            !FileManager.default.fileExists(atPath: url.appendingPathComponent(relativePath).path)
+        }
+    }
+
+    static func missingModelBundles(at url: URL) -> [String] {
+        requiredModelBundles.filter { relativePath in
             !FileManager.default.fileExists(atPath: url.appendingPathComponent(relativePath).path)
         }
     }
@@ -46,10 +59,13 @@ enum ParakeetLocalModelLayout {
         }
 
         guard candidateURL.lastPathComponent != expectedFolderName else {
+            try validateFluidAudioLoadPath(candidateURL)
             return candidateURL
         }
 
-        return try createExpectedFolderSymlink(to: candidateURL)
+        let linkURL = try createExpectedFolderSymlink(to: candidateURL)
+        try validateFluidAudioLoadPath(linkURL)
+        return linkURL
     }
 
     private static func candidateURLs(for selectedURL: URL) -> [URL] {
@@ -80,5 +96,19 @@ enum ParakeetLocalModelLayout {
 
         try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: modelURL)
         return linkURL
+    }
+
+    private static func validateFluidAudioLoadPath(_ url: URL) throws {
+        let missingBundles = missingModelBundles(at: url)
+        let missingFiles = missingFiles(at: url)
+        let missing = missingBundles + missingFiles.filter { file in
+            !missingBundles.contains { bundle in file.hasPrefix(bundle) }
+        }
+
+        guard missing.isEmpty else {
+            throw AppError.modelPathInvalid(
+                details: "FluidAudio local load path is incomplete: \(missing.joined(separator: ", "))"
+            )
+        }
     }
 }

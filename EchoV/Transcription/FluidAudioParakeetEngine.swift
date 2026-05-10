@@ -75,11 +75,13 @@ actor FluidAudioParakeetEngine: ASREngine {
 
         switch progress.phase {
         case .listing:
-            phase = "Checking local model files"
-        case .downloading(let completedFiles, let totalFiles):
-            phase = totalFiles > 0
-                ? "Loading local model files \(completedFiles)/\(totalFiles)"
-                : "Loading local model files"
+            phase = "Preparing local model"
+        case .downloading(_, let totalFiles):
+            if totalFiles > 0 {
+                onStatusUpdate?("Unexpected remote model fetch blocked by local-only setup")
+                return
+            }
+            phase = "Loading local model"
         case .compiling(let modelName):
             phase = "Compiling \(modelName)"
         }
