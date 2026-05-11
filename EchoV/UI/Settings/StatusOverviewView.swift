@@ -79,16 +79,6 @@ struct StatusOverviewView: View {
                             ) {
                                 StatusBadge(text: modelSelectionText, tone: modelSelectionTone)
                             }
-
-                            DividerLine()
-
-                            SettingsRow(
-                                icon: "cpu",
-                                title: "Compute",
-                                subtitle: container.settings.asrComputeMode.displayName
-                            ) {
-                                StatusBadge(text: "Local", tone: .neutral)
-                            }
                         }
                     }
                 }

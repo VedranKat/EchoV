@@ -115,11 +115,6 @@ final class AppContainer {
         pipeline.setASREngine(UnconfiguredASREngine())
     }
 
-    func updateASRComputeMode(_ computeMode: ASRComputeMode) {
-        settings.asrComputeMode = computeMode
-        configureASREngineFromSelectedModel()
-    }
-
     private func configureASREngineFromSelectedModel() {
         guard
             let selection = modelStore.selectedASRModel,
@@ -132,7 +127,7 @@ final class AppContainer {
         pipeline.setASREngine(
             FluidAudioParakeetEngine(
                 modelURL: selection.url,
-                computeMode: settings.asrComputeMode
+                computeMode: .all
             )
         )
         preloadASRModel()

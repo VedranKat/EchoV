@@ -86,27 +86,10 @@ struct TranscriptionSettingsView: View {
                         }
                     }
                 }
-
-                SettingsCard("Performance", subtitle: "Choose which Apple hardware units Core ML may use.") {
-                    Picker("Compute mode", selection: computeModeBinding) {
-                        ForEach(ASRComputeMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
             }
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private var computeModeBinding: Binding<ASRComputeMode> {
-        Binding {
-            container.settings.asrComputeMode
-        } set: { mode in
-            container.updateASRComputeMode(mode)
-        }
     }
 
     private var modelTitle: String {
