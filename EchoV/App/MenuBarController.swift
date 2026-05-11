@@ -9,7 +9,7 @@ final class MenuBarController {
 
     init(container: AppContainer) {
         self.container = container
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.container.appState.onStatusChanged = { [weak self] in
             self?.rebuildMenu()
         }
@@ -17,12 +17,12 @@ final class MenuBarController {
     }
 
     private func configure() {
-        statusItem.button?.title = "EchoV"
+        configureStatusButton()
         rebuildMenu()
     }
 
     private func rebuildMenu() {
-        statusItem.button?.title = "EchoV"
+        configureStatusButton()
         let menu = NSMenu()
 
         let statusItem = NSMenuItem(title: container.appState.state.menuTitle, action: nil, keyEquivalent: "")
@@ -75,6 +75,17 @@ final class MenuBarController {
         self.statusItem.menu = menu
     }
 
+    private func configureStatusButton() {
+        guard let button = statusItem.button else {
+            return
+        }
+
+        button.title = ""
+        button.image = makeMenuBarImage()
+        button.imagePosition = .imageOnly
+        button.toolTip = "EchoV - \(container.appState.state.menuTitle)"
+    }
+
     @objc private func toggleRecording() {
         Task {
             await container.pipeline.toggleRecording()
@@ -101,5 +112,38 @@ final class MenuBarController {
 
         let endIndex = singleLine.index(singleLine.startIndex, offsetBy: limit)
         return "\(singleLine[..<endIndex])..."
+    }
+
+    private func makeMenuBarImage() -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18))
+        image.lockFocus()
+        defer {
+            image.unlockFocus()
+            image.isTemplate = true
+        }
+
+        NSColor.black.setFill()
+
+        let bars: [(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat)] = [
+            (2.0, 7.0, 2.0, 4.0),
+            (5.0, 4.0, 2.0, 10.0),
+            (8.0, 2.0, 2.0, 14.0),
+            (11.0, 5.0, 2.0, 8.0),
+            (14.0, 7.0, 2.0, 4.0)
+        ]
+
+        for bar in bars {
+            NSBezierPath(
+                roundedRect: NSRect(x: bar.x, y: bar.y, width: bar.width, height: bar.height),
+                xRadius: 1,
+                yRadius: 1
+            )
+            .fill()
+        }
+
+        NSBezierPath(ovalIn: NSRect(x: 7.0, y: 7.0, width: 4.0, height: 4.0))
+            .fill()
+
+        return image
     }
 }

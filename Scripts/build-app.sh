@@ -8,6 +8,7 @@ CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
 APP_DIR="$ROOT_DIR/dist/EchoV.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 cd "$ROOT_DIR"
 
@@ -19,10 +20,11 @@ swift build \
   --scratch-path "$SCRATCH_PATH"
 
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$SCRATCH_PATH/$CONFIGURATION/EchoV" "$MACOS_DIR/EchoV"
 cp "$ROOT_DIR/Packaging/Info.plist" "$CONTENTS_DIR/Info.plist"
+cp "$ROOT_DIR/Packaging/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
 codesign \
