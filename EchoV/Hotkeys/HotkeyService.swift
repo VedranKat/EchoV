@@ -2,26 +2,42 @@ import Carbon
 import Foundation
 
 protocol HotkeyService: AnyObject {
-    func register(_ binding: HotkeyBinding, handler: @escaping @Sendable () -> Void) throws
+    func register(_ registrations: [HotkeyRegistration]) throws
     func unregister()
+}
+
+struct HotkeyRegistration: Sendable {
+    let id: UInt32
+    let binding: HotkeyBinding
+    let onPressed: @Sendable () -> Void
+    let onReleased: (@Sendable () -> Void)?
 }
 
 final class CarbonHotkeyService: HotkeyService {
     private let signature = FourCharCode("ECHV")
-    private let hotkeyID = UInt32(1)
 
-    private var handler: (@Sendable () -> Void)?
+    private var registrationsByID: [UInt32: HotkeyRegistration] = [:]
     private var eventHandler: EventHandlerRef?
-    private var hotkeyRef: EventHotKeyRef?
+    private var hotkeyRefs: [EventHotKeyRef] = []
 
-    func register(_ binding: HotkeyBinding, handler: @escaping @Sendable () -> Void) throws {
+    func register(_ registrations: [HotkeyRegistration]) throws {
         unregister()
-        self.handler = handler
+        registrationsByID = Dictionary(uniqueKeysWithValues: registrations.map { ($0.id, $0) })
 
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: OSType(kEventHotKeyPressed)
-        )
+        guard !registrations.isEmpty else {
+            return
+        }
+
+        var eventTypes = [
+            EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: OSType(kEventHotKeyPressed)
+            ),
+            EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: OSType(kEventHotKeyReleased)
+            )
+        ]
 
         let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
@@ -48,11 +64,11 @@ final class CarbonHotkeyService: HotkeyService {
                 let service = Unmanaged<CarbonHotkeyService>
                     .fromOpaque(userData)
                     .takeUnretainedValue()
-                service.handleHotkey(id: hotkeyID)
+                service.handleHotkey(id: hotkeyID, eventKind: GetEventKind(event))
                 return noErr
             },
-            1,
-            &eventType,
+            eventTypes.count,
+            &eventTypes,
             Unmanaged.passUnretained(self).toOpaque(),
             &eventHandler
         )
@@ -61,42 +77,54 @@ final class CarbonHotkeyService: HotkeyService {
             throw AppError.hotkeyUnavailable(details: "Could not install hotkey event handler (\(installStatus)).")
         }
 
-        let carbonHotkeyID = EventHotKeyID(signature: signature, id: hotkeyID)
-        let registerStatus = RegisterEventHotKey(
-            binding.keyCode,
-            binding.carbonModifiers,
-            carbonHotkeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotkeyRef
-        )
+        for registration in registrations {
+            var hotkeyRef: EventHotKeyRef?
+            let carbonHotkeyID = EventHotKeyID(signature: signature, id: registration.id)
+            let registerStatus = RegisterEventHotKey(
+                registration.binding.keyCode,
+                registration.binding.carbonModifiers,
+                carbonHotkeyID,
+                GetApplicationEventTarget(),
+                0,
+                &hotkeyRef
+            )
 
-        guard registerStatus == noErr else {
-            unregister()
-            throw AppError.hotkeyUnavailable(details: "Could not register \(binding.displayName) (\(registerStatus)).")
+            guard registerStatus == noErr, let hotkeyRef else {
+                unregister()
+                throw AppError.hotkeyUnavailable(details: "Could not register \(registration.binding.displayName) (\(registerStatus)).")
+            }
+
+            hotkeyRefs.append(hotkeyRef)
         }
     }
 
     func unregister() {
-        if let hotkeyRef {
+        for hotkeyRef in hotkeyRefs {
             UnregisterEventHotKey(hotkeyRef)
-            self.hotkeyRef = nil
         }
+        hotkeyRefs.removeAll()
 
         if let eventHandler {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
         }
 
-        handler = nil
+        registrationsByID.removeAll()
     }
 
-    private func handleHotkey(id: EventHotKeyID) {
-        guard id.signature == signature, id.id == hotkeyID else {
+    private func handleHotkey(id: EventHotKeyID, eventKind: UInt32) {
+        guard id.signature == signature, let registration = registrationsByID[id.id] else {
             return
         }
 
-        handler?()
+        switch eventKind {
+        case UInt32(kEventHotKeyPressed):
+            registration.onPressed()
+        case UInt32(kEventHotKeyReleased):
+            registration.onReleased?()
+        default:
+            break
+        }
     }
 }
 

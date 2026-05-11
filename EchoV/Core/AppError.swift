@@ -3,6 +3,7 @@ import Foundation
 enum AppError: LocalizedError, Equatable {
     case microphonePermissionDenied
     case accessibilityPermissionDenied
+    case startupRegistrationFailed(details: String)
     case hotkeyUnavailable(details: String)
     case modelNotSelected
     case modelPathInvalid(details: String)
@@ -24,6 +25,8 @@ enum AppError: LocalizedError, Equatable {
             "Microphone permission is required to record dictation."
         case .accessibilityPermissionDenied:
             "Accessibility permission is required to paste into other apps."
+        case .startupRegistrationFailed:
+            "Could not update startup setting."
         case .hotkeyUnavailable:
             "The selected hotkey is unavailable."
         case .modelNotSelected:
@@ -49,7 +52,8 @@ enum AppError: LocalizedError, Equatable {
 
     var technicalDetails: String? {
         switch self {
-        case .hotkeyUnavailable(let details),
+        case .startupRegistrationFailed(let details),
+             .hotkeyUnavailable(let details),
              .modelPathInvalid(let details),
              .modelLoadFailed(let details),
              .recordingFailed(let details),

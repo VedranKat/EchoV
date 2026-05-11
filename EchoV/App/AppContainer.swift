@@ -4,24 +4,40 @@ import Observation
 @MainActor
 @Observable
 final class AppContainer {
+    private enum HotkeyID {
+        static let toggle = UInt32(1)
+        static let pushToTalk = UInt32(2)
+    }
+
+    private enum RecordingTrigger {
+        case toggle
+        case pushToTalk
+    }
+
     let appState: AppState
+    let permissionState: PermissionState
     let settings: AppSettings
     let pipeline: DictationPipeline
     let microphonePermission: MicrophonePermissionService
     let accessibilityPermission: AccessibilityPermissionService
+    let startupPermission: StartupPermissionService
     let modelStore: ModelStore
     let historyStore: TranscriptHistoryStore
     let temporaryAudioStore: TemporaryAudioStore
     let licensesStore: LicensesStore
 
     private let hotkeyService: any HotkeyService
+    private var hasStarted = false
+    private var recordingTrigger: RecordingTrigger?
 
     private init(
         appState: AppState,
+        permissionState: PermissionState,
         settings: AppSettings,
         pipeline: DictationPipeline,
         microphonePermission: MicrophonePermissionService,
         accessibilityPermission: AccessibilityPermissionService,
+        startupPermission: StartupPermissionService,
         modelStore: ModelStore,
         historyStore: TranscriptHistoryStore,
         temporaryAudioStore: TemporaryAudioStore,
@@ -29,10 +45,12 @@ final class AppContainer {
         hotkeyService: any HotkeyService
     ) {
         self.appState = appState
+        self.permissionState = permissionState
         self.settings = settings
         self.pipeline = pipeline
         self.microphonePermission = microphonePermission
         self.accessibilityPermission = accessibilityPermission
+        self.startupPermission = startupPermission
         self.modelStore = modelStore
         self.historyStore = historyStore
         self.temporaryAudioStore = temporaryAudioStore
@@ -43,8 +61,10 @@ final class AppContainer {
     static func bootstrap() -> AppContainer {
         let settings = AppSettings()
         let appState = AppState()
+        let permissionState = PermissionState()
         let microphonePermission = MicrophonePermissionService()
         let accessibilityPermission = AccessibilityPermissionService()
+        let startupPermission = StartupPermissionService()
         let modelStore = ModelStore()
         let historyStore = TranscriptHistoryStore()
         let temporaryAudioStore = TemporaryAudioStore()
@@ -56,7 +76,10 @@ final class AppContainer {
             normalizer: AudioNormalizer(),
             asrEngine: UnconfiguredASREngine(),
             cleanupEngine: NoOpTextCleanupEngine(),
-            insertion: PasteInsertionService(accessibilityPermission: accessibilityPermission),
+            insertion: PasteInsertionService(
+                accessibilityPermission: accessibilityPermission,
+                clipboardInsertionMode: { settings.clipboardInsertionMode }
+            ),
             history: historyStore,
             temporaryAudioStore: temporaryAudioStore,
             isHistoryEnabled: { settings.isHistoryEnabled },
@@ -66,10 +89,12 @@ final class AppContainer {
 
         return AppContainer(
             appState: appState,
+            permissionState: permissionState,
             settings: settings,
             pipeline: pipeline,
             microphonePermission: microphonePermission,
             accessibilityPermission: accessibilityPermission,
+            startupPermission: startupPermission,
             modelStore: modelStore,
             historyStore: historyStore,
             temporaryAudioStore: temporaryAudioStore,
@@ -79,25 +104,74 @@ final class AppContainer {
     }
 
     func start() {
+        hasStarted = true
+        refreshPermissions()
+
         Task {
             await historyStore.load()
             await modelStore.restoreSelection()
             configureASREngineFromSelectedModel()
         }
 
-        do {
-            try hotkeyService.register(settings.hotkey) { [weak pipeline] in
-                Task {
-                    await pipeline?.toggleRecording()
-                }
-            }
-        } catch {
-            appState.lastError = .hotkeyUnavailable(details: error.localizedDescription)
-        }
+        registerHotkeys()
     }
 
     func stop() {
+        hasStarted = false
         hotkeyService.unregister()
+    }
+
+    func setToggleHotkey(_ binding: HotkeyBinding?) {
+        guard binding == nil || binding != settings.pushToTalkHotkey else {
+            appState.lastError = .hotkeyUnavailable(details: "Toggle and push-to-talk cannot use the same hotkey.")
+            return
+        }
+
+        settings.toggleHotkey = binding
+        registerHotkeys()
+    }
+
+    func setPushToTalkHotkey(_ binding: HotkeyBinding?) {
+        guard binding == nil || binding != settings.toggleHotkey else {
+            appState.lastError = .hotkeyUnavailable(details: "Toggle and push-to-talk cannot use the same hotkey.")
+            return
+        }
+
+        settings.pushToTalkHotkey = binding
+        registerHotkeys()
+    }
+
+    func resetHotkeysToDefaults() {
+        settings.resetHotkeysToDefaults()
+        registerHotkeys()
+    }
+
+    func refreshPermissions() {
+        permissionState.refresh(
+            microphonePermission: microphonePermission,
+            accessibilityPermission: accessibilityPermission,
+            startupPermission: startupPermission
+        )
+    }
+
+    func requestMicrophoneAccess() async {
+        _ = await microphonePermission.requestAccess()
+        refreshPermissions()
+    }
+
+    func promptForAccessibilityAccess() {
+        accessibilityPermission.promptForAccess()
+        refreshPermissions()
+    }
+
+    func setStartsAtLogin(_ isEnabled: Bool) {
+        do {
+            try startupPermission.setStartsAtLogin(isEnabled)
+            refreshPermissions()
+        } catch {
+            appState.lastError = .startupRegistrationFailed(details: error.localizedDescription)
+            refreshPermissions()
+        }
     }
 
     func selectASRModel(at url: URL) async {
@@ -156,5 +230,142 @@ final class AppContainer {
                 appState.notifyStatusChanged()
             }
         }
+    }
+
+    private func registerHotkeys() {
+        guard hasStarted else {
+            return
+        }
+
+        hotkeyService.unregister()
+
+        do {
+            try hotkeyService.register(hotkeyRegistrations())
+            if case .hotkeyUnavailable = appState.lastError {
+                appState.lastError = nil
+            }
+        } catch {
+            appState.lastError = .hotkeyUnavailable(details: error.localizedDescription)
+        }
+    }
+
+    private func hotkeyRegistrations() throws -> [HotkeyRegistration] {
+        if
+            let toggleHotkey = settings.toggleHotkey,
+            let pushToTalkHotkey = settings.pushToTalkHotkey,
+            toggleHotkey == pushToTalkHotkey
+        {
+            throw AppError.hotkeyUnavailable(details: "Toggle and push-to-talk cannot use the same hotkey.")
+        }
+
+        var registrations: [HotkeyRegistration] = []
+
+        if let toggleHotkey = settings.toggleHotkey {
+            registrations.append(
+                HotkeyRegistration(
+                    id: HotkeyID.toggle,
+                    binding: toggleHotkey,
+                    onPressed: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.handleToggleHotkey()
+                        }
+                    },
+                    onReleased: nil
+                )
+            )
+        }
+
+        if let pushToTalkHotkey = settings.pushToTalkHotkey {
+            registrations.append(
+                HotkeyRegistration(
+                    id: HotkeyID.pushToTalk,
+                    binding: pushToTalkHotkey,
+                    onPressed: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.handlePushToTalkPressed()
+                        }
+                    },
+                    onReleased: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.handlePushToTalkReleased()
+                        }
+                    }
+                )
+            )
+        }
+
+        return registrations
+    }
+
+    private func handleToggleHotkey() async {
+        switch recordingTrigger {
+        case nil:
+            guard appState.state.canStartRecording else {
+                return
+            }
+
+            recordingTrigger = .toggle
+            await pipeline.startRecording()
+
+            if !appState.state.isRecording {
+                recordingTrigger = nil
+            }
+        case .toggle:
+            guard appState.state.isRecording else {
+                recordingTrigger = nil
+                return
+            }
+
+            await pipeline.stopTranscribeAndInsert()
+            recordingTrigger = nil
+        case .pushToTalk:
+            return
+        }
+    }
+
+    private func handlePushToTalkPressed() async {
+        guard recordingTrigger == nil, appState.state.canStartRecording else {
+            return
+        }
+
+        recordingTrigger = .pushToTalk
+        await pipeline.startRecording()
+
+        if !appState.state.isRecording {
+            recordingTrigger = nil
+        }
+    }
+
+    private func handlePushToTalkReleased() async {
+        guard recordingTrigger == .pushToTalk else {
+            return
+        }
+
+        guard appState.state.isRecording else {
+            recordingTrigger = nil
+            return
+        }
+
+        await pipeline.stopTranscribeAndInsert()
+        recordingTrigger = nil
+    }
+}
+
+private extension DictationState {
+    var canStartRecording: Bool {
+        switch self {
+        case .idle, .completed, .failed, .cancelled:
+            true
+        case .recording, .transcribing, .cleaning, .inserting:
+            false
+        }
+    }
+
+    var isRecording: Bool {
+        if case .recording = self {
+            return true
+        }
+
+        return false
     }
 }

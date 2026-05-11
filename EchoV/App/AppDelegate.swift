@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         container.stop()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        container.refreshPermissions()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }

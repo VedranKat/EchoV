@@ -13,6 +13,9 @@ final class MenuBarController {
         self.container.appState.onStatusChanged = { [weak self] in
             self?.rebuildMenu()
         }
+        self.container.permissionState.onPermissionsChanged = { [weak self] in
+            self?.rebuildMenu()
+        }
         configure()
     }
 
@@ -25,35 +28,7 @@ final class MenuBarController {
         configureStatusButton()
         let menu = NSMenu()
 
-        let statusItem = NSMenuItem(title: container.appState.state.menuTitle, action: nil, keyEquivalent: "")
-        statusItem.isEnabled = false
-        menu.addItem(statusItem)
-
-        if let detail = container.appState.lastDetail, !detail.isEmpty {
-            let detailItem = NSMenuItem(title: "Status: \(shortMenuText(detail))", action: nil, keyEquivalent: "")
-            detailItem.isEnabled = false
-            menu.addItem(detailItem)
-        }
-
-        if let error = container.appState.lastError {
-            let errorItem = NSMenuItem(title: "Error: \(shortMenuText(error.userMessage))", action: nil, keyEquivalent: "")
-            errorItem.isEnabled = false
-            menu.addItem(errorItem)
-
-            if let details = error.technicalDetails, !details.isEmpty {
-                let detailsItem = NSMenuItem(title: shortMenuText(details), action: nil, keyEquivalent: "")
-                detailsItem.isEnabled = false
-                menu.addItem(detailsItem)
-            }
-        }
-
-        menu.addItem(NSMenuItem.separator())
-
-        let toggleItem = NSMenuItem(title: "Toggle Recording", action: #selector(toggleRecording), keyEquivalent: "")
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-
-        if !container.accessibilityPermission.isTrusted() {
+        if !container.permissionState.isAccessibilityTrusted {
             let accessibilityItem = NSMenuItem(
                 title: "Request Accessibility Access",
                 action: #selector(requestAccessibilityAccess),
@@ -61,6 +36,7 @@ final class MenuBarController {
             )
             accessibilityItem.target = self
             menu.addItem(accessibilityItem)
+            menu.addItem(NSMenuItem.separator())
         }
 
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
@@ -86,32 +62,13 @@ final class MenuBarController {
         button.toolTip = "EchoV - \(container.appState.state.menuTitle)"
     }
 
-    @objc private func toggleRecording() {
-        Task {
-            await container.pipeline.toggleRecording()
-            rebuildMenu()
-        }
-    }
-
     @objc private func openSettings() {
         settingsWindowController.show()
     }
 
     @objc private func requestAccessibilityAccess() {
-        container.accessibilityPermission.promptForAccess()
+        container.promptForAccessibilityAccess()
         rebuildMenu()
-    }
-
-    private func shortMenuText(_ text: String) -> String {
-        let singleLine = text.replacingOccurrences(of: "\n", with: " ")
-        let limit = 86
-
-        guard singleLine.count > limit else {
-            return singleLine
-        }
-
-        let endIndex = singleLine.index(singleLine.startIndex, offsetBy: limit)
-        return "\(singleLine[..<endIndex])..."
     }
 
     private func makeMenuBarImage() -> NSImage {

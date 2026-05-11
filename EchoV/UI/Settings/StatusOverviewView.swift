@@ -37,13 +37,6 @@ struct StatusOverviewView: View {
                         }
 
                         Spacer()
-
-                        Button(action: toggleRecording) {
-                            Label(actionTitle, systemImage: actionIcon)
-                                .frame(minWidth: 132)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
                     }
                 }
 
@@ -66,6 +59,16 @@ struct StatusOverviewView: View {
                                 subtitle: "Pastes transcripts into the active app."
                             ) {
                                 StatusBadge(text: accessibilityStatus.text, tone: accessibilityStatus.tone)
+                            }
+
+                            DividerLine()
+
+                            SettingsRow(
+                                icon: "power.circle.fill",
+                                title: "Start at login",
+                                subtitle: startupHelpText
+                            ) {
+                                StatusBadge(text: startupStatus.text, tone: startupStatus.tone)
                             }
                         }
                     }
@@ -103,6 +106,9 @@ struct StatusOverviewView: View {
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            container.refreshPermissions()
+        }
     }
 
     private var statusTitle: String {
@@ -133,7 +139,7 @@ struct StatusOverviewView: View {
 
         return switch container.appState.state {
         case .idle:
-            "Use the hotkey or start recording from here."
+            "Use the global hotkey while focused in the app where you want the transcript inserted."
         case .recording:
             "Speak naturally. Stop recording when you are done."
         case .transcribing(let status):
@@ -200,22 +206,8 @@ struct StatusOverviewView: View {
         }
     }
 
-    private var actionTitle: String {
-        if case .recording = container.appState.state {
-            return "Stop Recording"
-        }
-        return "Start Recording"
-    }
-
-    private var actionIcon: String {
-        if case .recording = container.appState.state {
-            return "stop.fill"
-        }
-        return "mic.fill"
-    }
-
     private var microphoneStatus: (text: String, tone: StatusBadge.Tone) {
-        switch container.microphonePermission.authorizationStatus() {
+        switch container.permissionState.microphoneAuthorizationStatus {
         case .authorized:
             ("Allowed", .success)
         case .denied, .restricted:
@@ -228,9 +220,37 @@ struct StatusOverviewView: View {
     }
 
     private var accessibilityStatus: (text: String, tone: StatusBadge.Tone) {
-        container.accessibilityPermission.isTrusted()
+        container.permissionState.isAccessibilityTrusted
             ? ("Allowed", .success)
             : ("Needed", .warning)
+    }
+
+    private var startupStatus: (text: String, tone: StatusBadge.Tone) {
+        switch container.permissionState.startupStatus {
+        case .enabled:
+            ("Enabled", .success)
+        case .notRegistered:
+            ("Off", .warning)
+        case .requiresApproval:
+            ("Needs approval", .warning)
+        case .unavailable:
+            ("Unavailable", .danger)
+        }
+    }
+
+    private var startupHelpText: String {
+        switch container.permissionState.startupStatus {
+        case .enabled(.serviceManagement):
+            "Opens automatically when you log in."
+        case .enabled(.launchAgent):
+            "Opens at login using a local LaunchAgent."
+        case .notRegistered:
+            "Does not open automatically after login."
+        case .requiresApproval:
+            "Approve it in System Settings > General > Login Items."
+        case .unavailable:
+            "Startup status is unavailable."
+        }
     }
 
     private var modelSelectionText: String {
@@ -255,11 +275,5 @@ struct StatusOverviewView: View {
         }
 
         return .warning
-    }
-
-    private func toggleRecording() {
-        Task {
-            await container.pipeline.toggleRecording()
-        }
     }
 }

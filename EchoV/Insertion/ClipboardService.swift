@@ -23,18 +23,22 @@ struct PasteInsertionService: TextInsertionService {
     private let clipboard = ClipboardService()
     private let accessibilityPermission: AccessibilityPermissionService
     private let restoreDelay: Duration
+    private let clipboardInsertionMode: @MainActor () -> ClipboardInsertionMode
 
     init(
         accessibilityPermission: AccessibilityPermissionService,
-        restoreDelay: Duration = .milliseconds(350)
+        restoreDelay: Duration = .milliseconds(350),
+        clipboardInsertionMode: @escaping @MainActor () -> ClipboardInsertionMode = { .pasteAndRestorePrevious }
     ) {
         self.accessibilityPermission = accessibilityPermission
         self.restoreDelay = restoreDelay
+        self.clipboardInsertionMode = clipboardInsertionMode
     }
 
     @MainActor
     func insert(_ text: String) async throws -> InsertionResult {
-        let snapshot = clipboard.snapshot()
+        let mode = clipboardInsertionMode()
+        let snapshot = mode == .pasteAndRestorePrevious ? clipboard.snapshot() : nil
         clipboard.copy(text)
 
         guard accessibilityPermission.isTrusted() else {
@@ -46,12 +50,14 @@ struct PasteInsertionService: TextInsertionService {
         }
 
         try? await Task.sleep(for: restoreDelay)
-        clipboard.restore(snapshot)
+        if let snapshot {
+            clipboard.restore(snapshot)
+        }
 
         return InsertionResult(
             insertedDirectly: true,
             copiedToClipboard: true,
-            restoredPreviousClipboard: true
+            restoredPreviousClipboard: snapshot != nil
         )
     }
 
