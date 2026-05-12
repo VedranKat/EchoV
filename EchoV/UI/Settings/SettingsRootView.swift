@@ -62,6 +62,8 @@ struct SettingsRootView: View {
             HistoryView()
         case .proxy:
             ProxySettingsView()
+        case .releaseNotes:
+            ReleaseNotesView()
         case .licenses:
             LicensesView()
         }
@@ -106,6 +108,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case model
     case history
     case proxy
+    case releaseNotes
     case licenses
 
     var id: String { rawValue }
@@ -122,6 +125,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "History"
         case .proxy:
             "Proxy"
+        case .releaseNotes:
+            "Release Notes"
         case .licenses:
             "Licenses"
         }
@@ -139,6 +144,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "clock"
         case .proxy:
             "network"
+        case .releaseNotes:
+            "sparkles.rectangle.stack"
         case .licenses:
             "doc.text"
         }
