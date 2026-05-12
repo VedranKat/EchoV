@@ -4,7 +4,10 @@ import Foundation
 struct LlamaRuntimeInstaller: Sendable {
     private let maxAttempts = 3
 
-    func install(progress: @escaping @Sendable (String) -> Void) async throws -> URL {
+    func install(
+        proxySettings: ProxySettings = .disabled,
+        progress: @escaping @Sendable (String) -> Void
+    ) async throws -> URL {
         let destination = LlamaRuntimeLayout.managedRuntimeURL
         let parentURL = destination.deletingLastPathComponent()
         let archiveURL = parentURL.appendingPathComponent(LlamaRuntimeLayout.archiveFileName)
@@ -33,7 +36,7 @@ struct LlamaRuntimeInstaller: Sendable {
                 try? FileManager.default.removeItem(at: archiveURL)
                 try? FileManager.default.removeItem(at: extractURL)
 
-                try await downloadArchive(to: partialURL) { detail in
+                try await downloadArchive(to: partialURL, proxySettings: proxySettings) { detail in
                     progress(attempt == 1 ? detail : "\(detail) (\(attemptLabel))")
                 }
 
@@ -76,6 +79,7 @@ struct LlamaRuntimeInstaller: Sendable {
 
     private func downloadArchive(
         to partialURL: URL,
+        proxySettings: ProxySettings,
         progress: @escaping @Sendable (String) -> Void
     ) async throws {
         progress("Starting llama.cpp runtime download...")
@@ -83,7 +87,12 @@ struct LlamaRuntimeInstaller: Sendable {
         var request = URLRequest(url: LlamaRuntimeLayout.downloadURL)
         request.setValue("EchoV", forHTTPHeaderField: "User-Agent")
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let session = ProxyURLSessionFactory(proxySettings: proxySettings).makeSession()
+        defer {
+            session.finishTasksAndInvalidate()
+        }
+
+        let (bytes, response) = try await session.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             throw LlamaRuntimeInstallError.downloadFailed(statusCode: (response as? HTTPURLResponse)?.statusCode)
         }

@@ -65,7 +65,7 @@ final class AppContainer {
         let microphonePermission = MicrophonePermissionService()
         let accessibilityPermission = AccessibilityPermissionService()
         let startupPermission = StartupPermissionService()
-        let modelStore = ModelStore()
+        let modelStore = ModelStore(proxySettings: { settings.proxySettings })
         let historyStore = TranscriptHistoryStore()
         let temporaryAudioStore = TemporaryAudioStore()
         let licensesStore = LicensesStore()

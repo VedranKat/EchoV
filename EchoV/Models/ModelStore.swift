@@ -8,6 +8,7 @@ final class ModelStore {
     private let installer: ParakeetModelInstaller
     private let llamaRuntimeInstaller: LlamaRuntimeInstaller
     private let postProcessingInstaller: Gemma4PostProcessingModelInstaller
+    private let proxySettings: @MainActor () -> ProxySettings
     private let userDefaults: UserDefaults
     private let asrBookmarkKey = "selectedASRModelBookmark"
     private let llamaRuntimeBookmarkKey = "selectedLlamaRuntimeBookmark"
@@ -28,12 +29,14 @@ final class ModelStore {
         installer: ParakeetModelInstaller = ParakeetModelInstaller(),
         llamaRuntimeInstaller: LlamaRuntimeInstaller = LlamaRuntimeInstaller(),
         postProcessingInstaller: Gemma4PostProcessingModelInstaller = Gemma4PostProcessingModelInstaller(),
+        proxySettings: @escaping @MainActor () -> ProxySettings = { .disabled },
         userDefaults: UserDefaults = .standard
     ) {
         self.validator = validator
         self.installer = installer
         self.llamaRuntimeInstaller = llamaRuntimeInstaller
         self.postProcessingInstaller = postProcessingInstaller
+        self.proxySettings = proxySettings
         self.userDefaults = userDefaults
     }
 
@@ -139,7 +142,13 @@ final class ModelStore {
         installState = .installing("Starting model download...")
 
         do {
-            let url = try await installer.install { [weak self] detail in
+            let proxySettings = proxySettings()
+            guard proxySettings.isValid else {
+                installState = .failed(Self.invalidProxyMessage(prefix: "Model install failed"))
+                return
+            }
+
+            let url = try await installer.install(proxySettings: proxySettings) { [weak self] detail in
                 Task { @MainActor in
                     self?.installState = .installing(detail)
                 }
@@ -161,7 +170,13 @@ final class ModelStore {
         llamaRuntimeInstallState = .installing("Starting llama.cpp runtime download...")
 
         do {
-            let url = try await llamaRuntimeInstaller.install { [weak self] detail in
+            let proxySettings = proxySettings()
+            guard proxySettings.isValid else {
+                llamaRuntimeInstallState = .failed(Self.invalidProxyMessage(prefix: "llama.cpp runtime install failed"))
+                return
+            }
+
+            let url = try await llamaRuntimeInstaller.install(proxySettings: proxySettings) { [weak self] detail in
                 Task { @MainActor in
                     self?.llamaRuntimeInstallState = .installing(detail)
                 }
@@ -183,7 +198,13 @@ final class ModelStore {
         postProcessingInstallState = .installing("Starting Gemma download...")
 
         do {
-            let url = try await postProcessingInstaller.install { [weak self] detail in
+            let proxySettings = proxySettings()
+            guard proxySettings.isValid else {
+                postProcessingInstallState = .failed(Self.invalidProxyMessage(prefix: "Gemma install failed"))
+                return
+            }
+
+            let url = try await postProcessingInstaller.install(proxySettings: proxySettings) { [weak self] detail in
                 Task { @MainActor in
                     self?.postProcessingInstallState = .installing(detail)
                 }
@@ -227,6 +248,10 @@ final class ModelStore {
         userDefaults.removeObject(forKey: postProcessingBookmarkKey)
         selectedPostProcessingModel = nil
         postProcessingValidation = .notSelected
+    }
+
+    private static func invalidProxyMessage(prefix: String) -> String {
+        "\(prefix): Proxy settings are incomplete. Enter host names and ports from 1 to 65535."
     }
 
     private func restoreASRSelection() async {

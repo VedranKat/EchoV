@@ -4,8 +4,12 @@ import FluidAudio
 struct ParakeetModelInstaller: Sendable {
     private let maxAttempts = 3
 
-    func install(progress: @escaping @Sendable (String) -> Void) async throws -> URL {
+    func install(
+        proxySettings: ProxySettings = .disabled,
+        progress: @escaping @Sendable (String) -> Void
+    ) async throws -> URL {
         let destination = ParakeetLocalModelLayout.managedModelURL
+        ProxyEnvironment.apply(proxySettings)
         DiagnosticLog.write("Managed Parakeet install started destination=\(destination.path)")
 
         var lastError: Error?

@@ -8,7 +8,7 @@ struct LicensesView: View {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
                     title: "Licenses",
-                    subtitle: "Third-party notices for dependencies used by EchoV."
+                    subtitle: "Third-party notices for dependencies used by EchoV. Full notices are included in LICENSES.md."
                 )
 
                 LazyVStack(spacing: 12) {

@@ -3,7 +3,10 @@ import Foundation
 struct Gemma4PostProcessingModelInstaller: Sendable {
     private let maxAttempts = 3
 
-    func install(progress: @escaping @Sendable (String) -> Void) async throws -> URL {
+    func install(
+        proxySettings: ProxySettings = .disabled,
+        progress: @escaping @Sendable (String) -> Void
+    ) async throws -> URL {
         let destination = Gemma4PostProcessingModelLayout.managedModelURL
         let fileURL = destination.appendingPathComponent(Gemma4PostProcessingModelLayout.ggufFileName)
         let partialURL = destination.appendingPathComponent("\(Gemma4PostProcessingModelLayout.ggufFileName).download")
@@ -31,7 +34,7 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
                     try? FileManager.default.removeItem(at: partialURL)
                 }
 
-                try await downloadModel(to: partialURL) { detail in
+                try await downloadModel(to: partialURL, proxySettings: proxySettings) { detail in
                     progress(attempt == 1 ? detail : "\(detail) (\(attemptLabel))")
                 }
 
@@ -63,6 +66,7 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
 
     private func downloadModel(
         to partialURL: URL,
+        proxySettings: ProxySettings,
         progress: @escaping @Sendable (String) -> Void
     ) async throws {
         progress("Starting Gemma 4 E2B Q4 download...")
@@ -70,7 +74,12 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
         var request = URLRequest(url: Gemma4PostProcessingModelLayout.downloadURL)
         request.setValue("EchoV", forHTTPHeaderField: "User-Agent")
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let session = ProxyURLSessionFactory(proxySettings: proxySettings).makeSession()
+        defer {
+            session.finishTasksAndInvalidate()
+        }
+
+        let (bytes, response) = try await session.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             throw GemmaInstallError.downloadFailed(statusCode: (response as? HTTPURLResponse)?.statusCode)
         }

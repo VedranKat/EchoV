@@ -1,14 +1,6 @@
 # EchoV
 
-EchoV is a local-first macOS dictation app prototype.
-
-MVP loop:
-
-```text
-global hotkey -> record audio -> transcribe locally -> paste into active app
-```
-
-The project is currently scaffolded as a native Swift/SwiftUI menu bar app with clean seams for audio recording, hotkeys, ASR, text insertion, model validation, local history, and third-party acknowledgements.
+EchoV is a local-first macOS menu bar dictation app. Press a global hotkey, speak, and EchoV transcribes locally before pasting the text into the active app.
 
 ## Build
 
@@ -16,28 +8,27 @@ The project is currently scaffolded as a native Swift/SwiftUI menu bar app with 
 swift build
 ```
 
-## Build App Bundle
+To build a `.app` bundle:
 
 ```sh
 bash Scripts/build-app.sh
 ```
 
-The app bundle is written to `dist/EchoV.app`.
-
-By default the bundle is ad-hoc signed. To use a stable local signing identity for macOS permissions:
+The bundle is written to `dist/EchoV.app` and ad-hoc signed by default. To sign with a local identity:
 
 ```sh
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name" bash Scripts/build-app.sh
 ```
 
-## Run
+## Use
 
-```sh
-swift run EchoV
-```
-
-For microphone permission behavior, prefer running the packaged app bundle:
+Run the packaged app:
 
 ```sh
 open dist/EchoV.app
 ```
+
+Open EchoV from the menu bar, grant microphone and accessibility permissions, then download or select the local transcription model in Settings. The default shortcuts are:
+
+- Toggle dictation: Option + Space
+- Push to talk: §

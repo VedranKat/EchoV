@@ -42,6 +42,59 @@ final class AppSettings {
         }
     }
 
+    var isProxyEnabled: Bool {
+        didSet {
+            userDefaults.set(isProxyEnabled, forKey: Keys.isProxyEnabled)
+            applyProxyEnvironment()
+        }
+    }
+
+    var httpProxyHost: String {
+        didSet {
+            userDefaults.set(httpProxyHost, forKey: Keys.httpProxyHost)
+            applyProxyEnvironment()
+        }
+    }
+
+    var httpProxyPort: String {
+        didSet {
+            userDefaults.set(httpProxyPort, forKey: Keys.httpProxyPort)
+            applyProxyEnvironment()
+        }
+    }
+
+    var httpsProxyHost: String {
+        didSet {
+            userDefaults.set(httpsProxyHost, forKey: Keys.httpsProxyHost)
+            applyProxyEnvironment()
+        }
+    }
+
+    var httpsProxyPort: String {
+        didSet {
+            userDefaults.set(httpsProxyPort, forKey: Keys.httpsProxyPort)
+            applyProxyEnvironment()
+        }
+    }
+
+    var usesSameProxyForHTTPS: Bool {
+        didSet {
+            userDefaults.set(usesSameProxyForHTTPS, forKey: Keys.usesSameProxyForHTTPS)
+            applyProxyEnvironment()
+        }
+    }
+
+    var proxySettings: ProxySettings {
+        ProxySettings(
+            isEnabled: isProxyEnabled,
+            httpHost: httpProxyHost,
+            httpPort: httpProxyPort,
+            httpsHost: httpsProxyHost,
+            httpsPort: httpsProxyPort,
+            usesSameProxyForHTTPS: usesSameProxyForHTTPS
+        )
+    }
+
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         self.toggleHotkey = Self.loadHotkey(forKey: Keys.toggleHotkey, from: userDefaults) ?? .defaultToggle
@@ -50,6 +103,13 @@ final class AppSettings {
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
         self.isPostProcessingEnabled = userDefaults.object(forKey: Keys.isPostProcessingEnabled) as? Bool ?? false
         self.clipboardInsertionMode = Self.loadClipboardInsertionMode(from: userDefaults)
+        self.isProxyEnabled = userDefaults.object(forKey: Keys.isProxyEnabled) as? Bool ?? false
+        self.httpProxyHost = userDefaults.string(forKey: Keys.httpProxyHost) ?? ""
+        self.httpProxyPort = userDefaults.string(forKey: Keys.httpProxyPort) ?? ""
+        self.httpsProxyHost = userDefaults.string(forKey: Keys.httpsProxyHost) ?? ""
+        self.httpsProxyPort = userDefaults.string(forKey: Keys.httpsProxyPort) ?? ""
+        self.usesSameProxyForHTTPS = userDefaults.object(forKey: Keys.usesSameProxyForHTTPS) as? Bool ?? true
+        applyProxyEnvironment()
     }
 
     func resetHotkeysToDefaults() {
@@ -92,6 +152,10 @@ final class AppSettings {
 
         return mode
     }
+
+    private func applyProxyEnvironment() {
+        ProxyEnvironment.apply(proxySettings)
+    }
 }
 
 private enum Keys {
@@ -101,4 +165,10 @@ private enum Keys {
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
     static let isPostProcessingEnabled = "settings.isPostProcessingEnabled"
     static let clipboardInsertionMode = "settings.clipboardInsertionMode"
+    static let isProxyEnabled = "settings.isProxyEnabled"
+    static let httpProxyHost = "settings.httpProxyHost"
+    static let httpProxyPort = "settings.httpProxyPort"
+    static let httpsProxyHost = "settings.httpsProxyHost"
+    static let httpsProxyPort = "settings.httpsProxyPort"
+    static let usesSameProxyForHTTPS = "settings.usesSameProxyForHTTPS"
 }

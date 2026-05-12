@@ -7,16 +7,19 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
     private let modelURL: URL
     private let runtimeURL: URL?
     private let port: Int
+    private let session: URLSession
     private var process: Process?
 
     init(modelURL: URL, runtimeURL: URL?, port: Int = 18080) {
         self.modelURL = modelURL
         self.runtimeURL = runtimeURL
         self.port = port
+        self.session = Self.makeDirectLocalSession()
     }
 
     deinit {
         process?.terminate()
+        session.invalidateAndCancel()
     }
 
     func prepare() async throws {
@@ -77,7 +80,7 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
             maxTokens: 512
         ))
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             let detail = String(data: data, encoding: .utf8) ?? "No response body."
             throw AppError.cleanupFailed(details: "llama-server generation failed: \(detail)")
@@ -128,7 +131,7 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
             }
 
             do {
-                let (_, response) = try await URLSession.shared.data(from: baseURL.appendingPathComponent("health"))
+                let (_, response) = try await session.data(from: baseURL.appendingPathComponent("health"))
                 if let httpResponse = response as? HTTPURLResponse, (200..<500).contains(httpResponse.statusCode) {
                     return
                 }
@@ -174,6 +177,12 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
         throw AppError.cleanupFailed(
             details: "llama-server was not found. Bundle llama.cpp into EchoV or install it with Homebrew for development."
         )
+    }
+
+    private static func makeDirectLocalSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [:]
+        return URLSession(configuration: configuration)
     }
 
     private static func environment(for executableURL: URL) -> [String: String] {

@@ -60,6 +60,8 @@ struct SettingsRootView: View {
             TranscriptionSettingsView()
         case .history:
             HistoryView()
+        case .proxy:
+            ProxySettingsView()
         case .licenses:
             LicensesView()
         }
@@ -103,6 +105,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case dictation
     case model
     case history
+    case proxy
     case licenses
 
     var id: String { rawValue }
@@ -117,6 +120,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "Model"
         case .history:
             "History"
+        case .proxy:
+            "Proxy"
         case .licenses:
             "Licenses"
         }
@@ -132,6 +137,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "waveform.badge.magnifyingglass"
         case .history:
             "clock"
+        case .proxy:
+            "network"
         case .licenses:
             "doc.text"
         }

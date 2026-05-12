@@ -25,6 +25,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$SCRATCH_PATH/$CONFIGURATION/EchoV" "$MACOS_DIR/EchoV"
 cp "$ROOT_DIR/Packaging/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$ROOT_DIR/Packaging/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+cp "$ROOT_DIR/LICENSES.md" "$RESOURCES_DIR/LICENSES.md"
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
 codesign \
