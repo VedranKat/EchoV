@@ -7,3 +7,5 @@ dist/
 *.xcuserdata/
 *.xcuserstate
 .DS_Store
+Tools/llama-*/
+Tools/llama-server

@@ -12,6 +12,8 @@ enum AppError: LocalizedError, Equatable {
     case recordingFailed(details: String)
     case transcriptionFailed(details: String)
     case transcriptionTimedOut
+    case cleanupModelNotConfigured
+    case cleanupFailed(details: String)
     case insertionFailed(details: String)
     case unknown(details: String)
 
@@ -43,6 +45,10 @@ enum AppError: LocalizedError, Equatable {
             "Transcription failed."
         case .transcriptionTimedOut:
             "Transcription timed out."
+        case .cleanupModelNotConfigured:
+            "Select a local text cleanup model before using Prime."
+        case .cleanupFailed:
+            "Prime cleanup failed."
         case .insertionFailed:
             "Paste insertion failed; the transcript was copied to the clipboard."
         case .unknown:
@@ -58,6 +64,7 @@ enum AppError: LocalizedError, Equatable {
              .modelLoadFailed(let details),
              .recordingFailed(let details),
              .transcriptionFailed(let details),
+             .cleanupFailed(let details),
              .insertionFailed(let details),
              .unknown(let details):
             details
@@ -65,7 +72,8 @@ enum AppError: LocalizedError, Equatable {
              .accessibilityPermissionDenied,
              .modelNotSelected,
              .recordingTooShort,
-             .transcriptionTimedOut:
+             .transcriptionTimedOut,
+             .cleanupModelNotConfigured:
             nil
         }
     }

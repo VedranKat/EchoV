@@ -2,6 +2,8 @@ import Foundation
 
 protocol ModelValidator: Sendable {
     func validateASRModel(at url: URL) async -> ModelValidationResult
+    func validateLlamaRuntime(at url: URL) async -> ModelValidationResult
+    func validatePostProcessingModel(at url: URL) async -> ModelValidationResult
 }
 
 struct ModelValidationResult: Equatable, Sendable {
@@ -15,6 +17,49 @@ struct ModelValidationResult: Equatable, Sendable {
 }
 
 struct ParakeetModelValidator: ModelValidator {
+    func validateLlamaRuntime(at url: URL) async -> ModelValidationResult {
+        guard LlamaRuntimeLayout.isDirectory(url) else {
+            return ModelValidationResult(isValid: false, message: "Selected path is not a folder.")
+        }
+
+        guard LlamaRuntimeLayout.llamaServerCandidate(in: url) != nil else {
+            return ModelValidationResult(
+                isValid: false,
+                message: "Expected a llama-server executable in the selected llama.cpp runtime folder."
+            )
+        }
+
+        return ModelValidationResult(
+            isValid: true,
+            message: "llama.cpp runtime is ready."
+        )
+    }
+
+    func validatePostProcessingModel(at url: URL) async -> ModelValidationResult {
+        guard Gemma4PostProcessingModelLayout.isDirectory(url) else {
+            return ModelValidationResult(isValid: false, message: "Selected path is not a folder.")
+        }
+
+        guard Gemma4PostProcessingModelLayout.modelFolderCandidate(for: url) != nil else {
+            if let closestModelURL = Gemma4PostProcessingModelLayout.existingModelFolderCandidates(for: url).first {
+                return ModelValidationResult(
+                    isValid: false,
+                    message: Gemma4PostProcessingModelLayout.missingFilesMessage(at: closestModelURL)
+                )
+            }
+
+            return ModelValidationResult(
+                isValid: false,
+                message: "Select \(Gemma4PostProcessingModelLayout.expectedFolderName), \(Gemma4PostProcessingModelLayout.modelID), or a parent folder."
+            )
+        }
+
+        return ModelValidationResult(
+            isValid: true,
+            message: "\(Gemma4PostProcessingModelLayout.displayName) model files are ready."
+        )
+    }
+
     func validateASRModel(at url: URL) async -> ModelValidationResult {
         guard ParakeetLocalModelLayout.isDirectory(url) else {
             return ModelValidationResult(isValid: false, message: "Selected path is not a folder.")

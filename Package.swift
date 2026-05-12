@@ -20,6 +20,11 @@ let package = Package(
                 .product(name: "FluidAudio", package: "FluidAudio")
             ],
             path: "EchoV"
+        ),
+        .testTarget(
+            name: "EchoVTests",
+            dependencies: ["EchoV"],
+            path: "Tests/EchoVTests"
         )
     ]
 )

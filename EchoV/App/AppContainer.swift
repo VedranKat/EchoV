@@ -75,7 +75,9 @@ final class AppContainer {
             recorder: AVFoundationAudioRecorder(microphonePermission: microphonePermission),
             normalizer: AudioNormalizer(),
             asrEngine: UnconfiguredASREngine(),
-            cleanupEngine: NoOpTextCleanupEngine(),
+            cleanupEngine: GemmaPrimeTextCleanupEngine(
+                textGenerationEngine: UnconfiguredLocalTextGenerationEngine()
+            ),
             insertion: PasteInsertionService(
                 accessibilityPermission: accessibilityPermission,
                 clipboardInsertionMode: { settings.clipboardInsertionMode }
@@ -84,6 +86,7 @@ final class AppContainer {
             temporaryAudioStore: temporaryAudioStore,
             isHistoryEnabled: { settings.isHistoryEnabled },
             shouldDeleteTemporaryAudio: { settings.shouldDeleteTemporaryAudio },
+            isPostProcessingEnabled: { settings.isPostProcessingEnabled },
             onStateChanged: { appState.notifyStatusChanged() }
         )
 
@@ -111,6 +114,7 @@ final class AppContainer {
             await historyStore.load()
             await modelStore.restoreSelection()
             configureASREngineFromSelectedModel()
+            configurePostProcessingEngineFromSelectedModel()
         }
 
         registerHotkeys()
@@ -119,6 +123,11 @@ final class AppContainer {
     func stop() {
         hasStarted = false
         hotkeyService.unregister()
+        pipeline.setCleanupEngine(
+            GemmaPrimeTextCleanupEngine(
+                textGenerationEngine: UnconfiguredLocalTextGenerationEngine()
+            )
+        )
     }
 
     func setToggleHotkey(_ binding: HotkeyBinding?) {
@@ -185,8 +194,43 @@ final class AppContainer {
     }
 
     func clearASRModelSelection() {
-        modelStore.clearSelection()
+        modelStore.clearASRSelection()
         pipeline.setASREngine(UnconfiguredASREngine())
+    }
+
+    func setPostProcessingEnabled(_ isEnabled: Bool) {
+        settings.isPostProcessingEnabled = isEnabled
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func selectPostProcessingModel(at url: URL) async {
+        await modelStore.selectPostProcessingModel(at: url)
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func clearPostProcessingModelSelection() {
+        modelStore.clearPostProcessingSelection()
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func installManagedLlamaRuntime() async {
+        await modelStore.installManagedLlamaRuntime()
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func selectLlamaRuntime(at url: URL) async {
+        await modelStore.selectLlamaRuntime(at: url)
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func clearLlamaRuntimeSelection() {
+        modelStore.clearLlamaRuntimeSelection()
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func installManagedPostProcessingModel() async {
+        await modelStore.installManagedPostProcessingModel()
+        configurePostProcessingEngineFromSelectedModel()
     }
 
     private func configureASREngineFromSelectedModel() {
@@ -227,6 +271,61 @@ final class AppContainer {
                 DiagnosticLog.write("preloadASRModel Error: \(error.localizedDescription)")
                 appState.lastError = .modelLoadFailed(details: error.localizedDescription)
                 appState.lastDetail = "ASR model failed to load."
+                appState.notifyStatusChanged()
+            }
+        }
+    }
+
+    private func configurePostProcessingEngineFromSelectedModel() {
+        guard
+            settings.isPostProcessingEnabled,
+            let runtime = modelStore.selectedLlamaRuntime,
+            runtime.validation.isValid,
+            let selection = modelStore.selectedPostProcessingModel,
+            selection.validation.isValid
+        else {
+            pipeline.setCleanupEngine(
+                GemmaPrimeTextCleanupEngine(
+                    textGenerationEngine: UnconfiguredLocalTextGenerationEngine()
+                )
+            )
+            return
+        }
+
+        pipeline.setCleanupEngine(
+            GemmaPrimeTextCleanupEngine(
+                textGenerationEngine: Gemma4LocalTextGenerationEngine(
+                    modelURL: selection.url,
+                    runtimeURL: runtime.url
+                )
+            )
+        )
+
+        if settings.isPostProcessingEnabled {
+            preloadPostProcessingModel()
+        }
+    }
+
+    private func preloadPostProcessingModel() {
+        appState.lastDetail = "Loading post-processing model..."
+        DiagnosticLog.write("preloadPostProcessingModel started")
+        appState.notifyStatusChanged()
+
+        Task {
+            do {
+                try await pipeline.prepareCleanup()
+                DiagnosticLog.write("preloadPostProcessingModel completed")
+                appState.lastDetail = "Post-processing model ready."
+                appState.notifyStatusChanged()
+            } catch let error as AppError {
+                DiagnosticLog.write("preloadPostProcessingModel AppError: \(error.userMessage) details=\(error.technicalDetails ?? "none")")
+                appState.lastError = error
+                appState.lastDetail = error.userMessage
+                appState.notifyStatusChanged()
+            } catch {
+                DiagnosticLog.write("preloadPostProcessingModel Error: \(error.localizedDescription)")
+                appState.lastError = .cleanupFailed(details: error.localizedDescription)
+                appState.lastDetail = "Post-processing model failed to load."
                 appState.notifyStatusChanged()
             }
         }

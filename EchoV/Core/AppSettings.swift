@@ -30,6 +30,12 @@ final class AppSettings {
         }
     }
 
+    var isPostProcessingEnabled: Bool {
+        didSet {
+            userDefaults.set(isPostProcessingEnabled, forKey: Keys.isPostProcessingEnabled)
+        }
+    }
+
     var clipboardInsertionMode: ClipboardInsertionMode {
         didSet {
             userDefaults.set(clipboardInsertionMode.rawValue, forKey: Keys.clipboardInsertionMode)
@@ -42,6 +48,7 @@ final class AppSettings {
         self.pushToTalkHotkey = Self.loadHotkey(forKey: Keys.pushToTalkHotkey, from: userDefaults) ?? .defaultPushToTalk
         self.isHistoryEnabled = userDefaults.object(forKey: Keys.isHistoryEnabled) as? Bool ?? true
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
+        self.isPostProcessingEnabled = userDefaults.object(forKey: Keys.isPostProcessingEnabled) as? Bool ?? false
         self.clipboardInsertionMode = Self.loadClipboardInsertionMode(from: userDefaults)
     }
 
@@ -92,5 +99,6 @@ private enum Keys {
     static let pushToTalkHotkey = "settings.pushToTalkHotkey"
     static let isHistoryEnabled = "settings.isHistoryEnabled"
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
+    static let isPostProcessingEnabled = "settings.isPostProcessingEnabled"
     static let clipboardInsertionMode = "settings.clipboardInsertionMode"
 }

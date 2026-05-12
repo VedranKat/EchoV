@@ -169,3 +169,40 @@ struct DividerLine: View {
             .frame(height: 1)
     }
 }
+
+struct SetupHelpButton: View {
+    let title: String
+    let message: String
+
+    @State private var isShowingHelp = false
+
+    var body: some View {
+        Button {
+            isShowingHelp.toggle()
+        } label: {
+            Image(systemName: "questionmark.circle")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .background(.quaternary.opacity(0.8), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .help(title)
+        .onHover { isHovering in
+            isShowingHelp = isHovering
+        }
+        .popover(isPresented: $isShowingHelp, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.headline)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(width: 300, alignment: .leading)
+        }
+    }
+}

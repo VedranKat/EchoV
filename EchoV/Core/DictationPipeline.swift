@@ -8,12 +8,13 @@ final class DictationPipeline {
     private let recorder: any AudioRecorder
     private let normalizer: AudioNormalizer
     private var asrEngine: any ASREngine
-    private let cleanupEngine: any TextCleanupEngine
+    private var cleanupEngine: any TextCleanupEngine
     private let insertion: any TextInsertionService
     private let history: TranscriptHistoryStore
     private let temporaryAudioStore: TemporaryAudioStore
     private let isHistoryEnabled: @MainActor () -> Bool
     private let shouldDeleteTemporaryAudio: @MainActor () -> Bool
+    private let isPostProcessingEnabled: @MainActor () -> Bool
     private let onStateChanged: @MainActor () -> Void
 
     private var currentRecording: RecordedAudio?
@@ -30,6 +31,7 @@ final class DictationPipeline {
         temporaryAudioStore: TemporaryAudioStore,
         isHistoryEnabled: @escaping @MainActor () -> Bool,
         shouldDeleteTemporaryAudio: @escaping @MainActor () -> Bool,
+        isPostProcessingEnabled: @escaping @MainActor () -> Bool,
         onStateChanged: @escaping @MainActor () -> Void = {}
     ) {
         self.appState = appState
@@ -42,6 +44,7 @@ final class DictationPipeline {
         self.temporaryAudioStore = temporaryAudioStore
         self.isHistoryEnabled = isHistoryEnabled
         self.shouldDeleteTemporaryAudio = shouldDeleteTemporaryAudio
+        self.isPostProcessingEnabled = isPostProcessingEnabled
         self.onStateChanged = onStateChanged
     }
 
@@ -58,6 +61,19 @@ final class DictationPipeline {
 
     func prepareASR() async throws {
         try await asrEngine.prepare()
+    }
+
+    func setCleanupEngine(_ cleanupEngine: any TextCleanupEngine) {
+        let previousCleanupEngine = self.cleanupEngine
+        self.cleanupEngine = cleanupEngine
+
+        Task {
+            await previousCleanupEngine.shutdown()
+        }
+    }
+
+    func prepareCleanup() async throws {
+        try await cleanupEngine.prepare()
     }
 
     func refreshStatus() {
@@ -102,8 +118,13 @@ final class DictationPipeline {
                 )
             }
 
-            setState(.cleaning)
-            let cleanedText = try await cleanupEngine.clean(transcript)
+            let cleanedText: CleanedText
+            if isPostProcessingEnabled() {
+                setState(.cleaning)
+                cleanedText = try await cleanupEngine.clean(transcript)
+            } else {
+                cleanedText = CleanedText(text: transcript.text)
+            }
 
             setState(.inserting)
             _ = try await insertion.insert(cleanedText.text)

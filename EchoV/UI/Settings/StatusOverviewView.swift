@@ -6,10 +6,25 @@ struct StatusOverviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                PageHeader(
-                    title: "EchoV",
-                    subtitle: "Local dictation status, model readiness, and permissions."
-                )
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("EchoV")
+                            .font(.largeTitle.weight(.semibold))
+
+                        Text(appVersionLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.quaternary, in: Capsule())
+                    }
+
+                    Text("Local dictation status, model readiness, and permissions.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 SettingsCard {
                     HStack(alignment: .center, spacing: 18) {
@@ -82,6 +97,16 @@ struct StatusOverviewView: View {
                             ) {
                                 StatusBadge(text: modelSelectionText, tone: modelSelectionTone)
                             }
+
+                            DividerLine()
+
+                            SettingsRow(
+                                icon: "wand.and.sparkles",
+                                title: "Post-processing",
+                                subtitle: postProcessingSubtitle
+                            ) {
+                                StatusBadge(text: postProcessingText, tone: postProcessingTone)
+                            }
                         }
                     }
                 }
@@ -130,6 +155,11 @@ struct StatusOverviewView: View {
         case .cancelled:
             "Cancelled"
         }
+    }
+
+    private var appVersionLabel: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return "v\(version ?? "0.1.0")"
     }
 
     private var statusDetail: String {
@@ -272,6 +302,54 @@ struct StatusOverviewView: View {
 
         if container.modelStore.installState.isInstalling {
             return .active
+        }
+
+        return .warning
+    }
+
+    private var postProcessingSubtitle: String {
+        guard container.settings.isPostProcessingEnabled else {
+            return "Disabled. EchoV will insert the raw transcript."
+        }
+
+        return container.modelStore.selectedPostProcessingModel?.displayName ?? "No post-processing model selected"
+    }
+
+    private var postProcessingText: String {
+        guard container.settings.isPostProcessingEnabled else {
+            return "Off"
+        }
+
+        if container.modelStore.selectedPostProcessingModel?.validation.isValid == true {
+            return "Ready"
+        }
+
+        if container.modelStore.postProcessingInstallState.isInstalling {
+            return "Installing"
+        }
+
+        if case .failed = container.modelStore.postProcessingInstallState {
+            return "Failed"
+        }
+
+        return "Setup needed"
+    }
+
+    private var postProcessingTone: StatusBadge.Tone {
+        guard container.settings.isPostProcessingEnabled else {
+            return .neutral
+        }
+
+        if container.modelStore.selectedPostProcessingModel?.validation.isValid == true {
+            return .success
+        }
+
+        if container.modelStore.postProcessingInstallState.isInstalling {
+            return .active
+        }
+
+        if case .failed = container.modelStore.postProcessingInstallState {
+            return .danger
         }
 
         return .warning

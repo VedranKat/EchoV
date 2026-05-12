@@ -13,6 +13,12 @@ struct LicensesStore: Sendable {
             name: "Parakeet v3 model",
             licenseName: "CC-BY-4.0",
             notice: "Supported as a local user-selected ASR model. Attribution is required when distributed, downloaded, recommended, or directly supported."
+        ),
+        ThirdPartyNotice(
+            id: "llama-cpp",
+            name: "llama.cpp",
+            licenseName: "MIT",
+            notice: "Used as the downloadable or user-selected local GGUF inference runtime for Gemma post-processing. Copyright (c) 2023-2026 The ggml authors."
         )
     ]
 }
