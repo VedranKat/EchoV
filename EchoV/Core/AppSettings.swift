@@ -30,6 +30,16 @@ final class AppSettings {
         }
     }
 
+    var selectedMicrophoneDeviceID: String? {
+        didSet {
+            if let selectedMicrophoneDeviceID {
+                userDefaults.set(selectedMicrophoneDeviceID, forKey: Keys.selectedMicrophoneDeviceID)
+            } else {
+                userDefaults.removeObject(forKey: Keys.selectedMicrophoneDeviceID)
+            }
+        }
+    }
+
     var isPostProcessingEnabled: Bool {
         didSet {
             userDefaults.set(isPostProcessingEnabled, forKey: Keys.isPostProcessingEnabled)
@@ -101,6 +111,7 @@ final class AppSettings {
         self.pushToTalkHotkey = Self.loadHotkey(forKey: Keys.pushToTalkHotkey, from: userDefaults) ?? .defaultPushToTalk
         self.isHistoryEnabled = userDefaults.object(forKey: Keys.isHistoryEnabled) as? Bool ?? true
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
+        self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
         self.isPostProcessingEnabled = userDefaults.object(forKey: Keys.isPostProcessingEnabled) as? Bool ?? false
         self.clipboardInsertionMode = Self.loadClipboardInsertionMode(from: userDefaults)
         self.isProxyEnabled = userDefaults.object(forKey: Keys.isProxyEnabled) as? Bool ?? false
@@ -163,6 +174,7 @@ private enum Keys {
     static let pushToTalkHotkey = "settings.pushToTalkHotkey"
     static let isHistoryEnabled = "settings.isHistoryEnabled"
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
+    static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
     static let isPostProcessingEnabled = "settings.isPostProcessingEnabled"
     static let clipboardInsertionMode = "settings.clipboardInsertionMode"
     static let isProxyEnabled = "settings.isProxyEnabled"

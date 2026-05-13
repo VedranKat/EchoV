@@ -72,7 +72,10 @@ final class AppContainer {
 
         let pipeline = DictationPipeline(
             appState: appState,
-            recorder: AVFoundationAudioRecorder(microphonePermission: microphonePermission),
+            recorder: AVFoundationAudioRecorder(
+                microphonePermission: microphonePermission,
+                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
+            ),
             normalizer: AudioNormalizer(),
             asrEngine: UnconfiguredASREngine(),
             cleanupEngine: GemmaPrimeTextCleanupEngine(
@@ -162,6 +165,14 @@ final class AppContainer {
     func requestMicrophoneAccess() async {
         _ = await microphonePermission.requestAccess()
         refreshPermissions()
+    }
+
+    func availableMicrophones() -> [MicrophoneDevice] {
+        MicrophoneDeviceCatalog.inputDevices()
+    }
+
+    func setSelectedMicrophoneDeviceID(_ deviceID: String?) {
+        settings.selectedMicrophoneDeviceID = deviceID
     }
 
     func promptForAccessibilityAccess() {

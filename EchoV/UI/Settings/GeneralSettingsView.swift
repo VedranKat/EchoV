@@ -4,6 +4,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Environment(AppContainer.self) private var container
     @State private var hotkeyBeingRecorded: EditableHotkey?
+    @State private var microphones: [MicrophoneDevice] = []
 
     var body: some View {
         ScrollView {
@@ -13,7 +14,7 @@ struct GeneralSettingsView: View {
                     subtitle: "Control how EchoV records, stores, and inserts transcripts."
                 )
 
-                SettingsCard("Recording", subtitle: "Both shortcuts can be used. Clear either one to disable it.") {
+                SettingsCard("Recording", subtitle: "Choose how EchoV starts and captures dictation audio.") {
                     VStack(spacing: 12) {
                         hotkeyRow(
                             editableHotkey: .toggle,
@@ -46,40 +47,35 @@ struct GeneralSettingsView: View {
                         DividerLine()
 
                         SettingsRow(
-                            icon: "doc.on.clipboard",
-                            title: "Clipboard",
-                            subtitle: container.settings.clipboardInsertionMode.subtitle
+                            icon: "mic",
+                            title: "Microphone",
+                            subtitle: microphoneSelectionSubtitle
                         ) {
-                            Picker("", selection: Bindable(container.settings).clipboardInsertionMode) {
-                                ForEach(ClipboardInsertionMode.allCases) { mode in
-                                    Text(mode.title).tag(mode)
+                            HStack(spacing: 8) {
+                                Picker(
+                                    "Microphone",
+                                    selection: Binding<String?>(
+                                        get: { container.settings.selectedMicrophoneDeviceID },
+                                        set: { container.setSelectedMicrophoneDeviceID($0) }
+                                    )
+                                ) {
+                                    Text("System Default").tag(Optional<String>.none)
+                                    ForEach(microphones) { microphone in
+                                        Text(microphone.name).tag(Optional(microphone.id))
+                                    }
                                 }
+                                .labelsHidden()
+                                .frame(width: 230)
+
+                                Button {
+                                    refreshMicrophones()
+                                } label: {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                .help("Refresh microphones")
                             }
-                            .labelsHidden()
-                            .frame(width: 230)
                         }
 
-                        DividerLine()
-
-                        SettingsRow(
-                            icon: "text.bubble",
-                            title: "Store transcript history",
-                            subtitle: "Keep transcripts locally on this Mac."
-                        ) {
-                            Toggle("", isOn: Bindable(container.settings).isHistoryEnabled)
-                                .labelsHidden()
-                        }
-
-                        DividerLine()
-
-                        SettingsRow(
-                            icon: "trash",
-                            title: "Delete temporary audio",
-                            subtitle: "Remove captured audio after transcription completes."
-                        ) {
-                            Toggle("", isOn: Bindable(container.settings).shouldDeleteTemporaryAudio)
-                                .labelsHidden()
-                        }
                     }
                 }
 
@@ -131,12 +127,53 @@ struct GeneralSettingsView: View {
                         }
                     }
                 }
+
+                SettingsCard("Output & Storage", subtitle: "Control where dictated text goes and what EchoV keeps afterward.") {
+                    VStack(spacing: 12) {
+                        SettingsRow(
+                            icon: "doc.on.clipboard",
+                            title: "Clipboard",
+                            subtitle: container.settings.clipboardInsertionMode.subtitle
+                        ) {
+                            Picker("", selection: Bindable(container.settings).clipboardInsertionMode) {
+                                ForEach(ClipboardInsertionMode.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 230)
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "text.bubble",
+                            title: "Store transcript history",
+                            subtitle: "Keep transcripts locally on this Mac."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).isHistoryEnabled)
+                                .labelsHidden()
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "trash",
+                            title: "Delete temporary audio",
+                            subtitle: "Remove captured audio after transcription completes."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).shouldDeleteTemporaryAudio)
+                                .labelsHidden()
+                        }
+                    }
+                }
             }
             .padding(24)
         }
         .settingsPageBackground()
         .onAppear {
             container.refreshPermissions()
+            refreshMicrophones()
         }
         .sheet(item: $hotkeyBeingRecorded) { editableHotkey in
             HotkeyRecorderSheet(
@@ -195,6 +232,28 @@ struct GeneralSettingsView: View {
             container.setToggleHotkey(binding)
         case .pushToTalk:
             container.setPushToTalkHotkey(binding)
+        }
+    }
+
+    private var microphoneSelectionSubtitle: String {
+        guard let selectedID = container.settings.selectedMicrophoneDeviceID else {
+            return "Use the current macOS default input device."
+        }
+
+        if let microphone = microphones.first(where: { $0.id == selectedID }) {
+            return "Use \(microphone.name) for new recordings."
+        }
+
+        return "The selected microphone is not currently available."
+    }
+
+    private func refreshMicrophones() {
+        microphones = container.availableMicrophones()
+        if
+            let selectedID = container.settings.selectedMicrophoneDeviceID,
+            !microphones.contains(where: { $0.id == selectedID })
+        {
+            container.setSelectedMicrophoneDeviceID(nil)
         }
     }
 

@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import Foundation
 
@@ -9,16 +10,21 @@ protocol AudioRecorder: Sendable {
 actor AVFoundationAudioRecorder: AudioRecorder {
     private let microphonePermission: MicrophonePermissionService
     private let minimumDuration: TimeInterval
+    private let selectedMicrophoneDeviceID: @MainActor @Sendable () -> String?
 
     private var recording: RecordedAudio?
-    private var recorder: AVAudioRecorder?
+    private var engine: AVAudioEngine?
+    private var audioFile: AVAudioFile?
+    private var writeError: Error?
 
     init(
         microphonePermission: MicrophonePermissionService,
-        minimumDuration: TimeInterval = 0.2
+        minimumDuration: TimeInterval = 0.2,
+        selectedMicrophoneDeviceID: @escaping @MainActor @Sendable () -> String? = { nil }
     ) {
         self.microphonePermission = microphonePermission
         self.minimumDuration = minimumDuration
+        self.selectedMicrophoneDeviceID = selectedMicrophoneDeviceID
     }
 
     func start() async throws -> RecordedAudio {
@@ -28,38 +34,60 @@ actor AVFoundationAudioRecorder: AudioRecorder {
             .appendingPathComponent("EchoV-\(UUID().uuidString)")
             .appendingPathExtension("wav")
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: 48_000,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false
-        ]
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        if let deviceID = await selectedMicrophoneDeviceID(), !deviceID.isEmpty {
+            try selectInputDevice(with: deviceID, for: inputNode)
+        }
 
-        let recorder = try AVAudioRecorder(url: url, settings: settings)
-        recorder.isMeteringEnabled = false
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
+            throw AppError.recordingFailed(details: "No input audio format was available.")
+        }
 
-        guard recorder.prepareToRecord(), recorder.record() else {
-            throw AppError.recordingFailed(details: "Could not start AVAudioRecorder.")
+        let audioFile = try AVAudioFile(forWriting: url, settings: inputFormat.settings)
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            do {
+                try audioFile.write(from: buffer)
+            } catch {
+                Task {
+                    await self?.rememberWriteError(error)
+                }
+            }
+        }
+
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            throw AppError.recordingFailed(details: error.localizedDescription)
         }
 
         let recording = RecordedAudio(fileURL: url, startedAt: Date(), endedAt: nil)
-        self.recorder = recorder
+        self.engine = engine
+        self.audioFile = audioFile
         self.recording = recording
+        self.writeError = nil
         return recording
     }
 
     func stop() async throws -> RecordedAudio {
-        guard let recording, let recorder else {
+        guard let recording, let engine else {
             throw AppError.recordingFailed(details: "No active recording.")
         }
 
-        recorder.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
 
         let stopped = RecordedAudio(fileURL: recording.fileURL, startedAt: recording.startedAt, endedAt: Date())
         self.recording = nil
-        self.recorder = nil
+        self.engine = nil
+        self.audioFile = nil
+
+        if let writeError {
+            self.writeError = nil
+            throw AppError.recordingFailed(details: writeError.localizedDescription)
+        }
 
         guard stopped.duration >= minimumDuration else {
             throw AppError.recordingTooShort
@@ -70,6 +98,34 @@ actor AVFoundationAudioRecorder: AudioRecorder {
         }
 
         return stopped
+    }
+
+    private func rememberWriteError(_ error: Error) {
+        writeError = error
+    }
+
+    private func selectInputDevice(with uid: String, for inputNode: AVAudioInputNode) throws {
+        guard let audioDeviceID = MicrophoneDeviceCatalog.audioDeviceID(for: uid) else {
+            throw AppError.recordingFailed(details: "The selected microphone is no longer available.")
+        }
+
+        guard let audioUnit = inputNode.audioUnit else {
+            throw AppError.recordingFailed(details: "The audio input unit was not available.")
+        }
+
+        var mutableDeviceID = audioDeviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &mutableDeviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+
+        guard status == noErr else {
+            throw AppError.recordingFailed(details: "Could not select microphone device (Core Audio status \(status)).")
+        }
     }
 
     private func ensureMicrophoneAccess() async throws {
