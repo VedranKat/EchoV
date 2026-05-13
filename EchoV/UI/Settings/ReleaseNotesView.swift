@@ -53,6 +53,11 @@ private struct ReleaseNote: Identifiable {
 
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "v1.1.0",
+            date: nil,
+            summary: "Adds microphone selection and three post-processing levels, with a leaner Llama server lifecycle to reduce RAM usage plus light mode color and interface polish."
+        ),
+        ReleaseNote(
             version: "v1.0.0",
             date: nil,
             summary: "First local-first macOS dictation release with global shortcuts, local transcription, optional text cleanup, transcript history, proxy settings, and bundled license notices."
