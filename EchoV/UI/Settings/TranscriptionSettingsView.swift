@@ -111,6 +111,23 @@ struct TranscriptionSettingsView: View {
 
                         DividerLine()
 
+                        SettingsRow(
+                            icon: "slider.horizontal.3",
+                            title: "Cleanup level",
+                            subtitle: container.settings.postProcessingLevel.subtitle
+                        ) {
+                            Picker("", selection: Bindable(container.settings).postProcessingLevel) {
+                                ForEach(PostProcessingLevel.allCases) { level in
+                                    Text(level.title).tag(level)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 260)
+                        }
+
+                        DividerLine()
+
                         HStack(alignment: .center, spacing: 16) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)

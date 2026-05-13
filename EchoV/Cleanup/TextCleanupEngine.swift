@@ -5,7 +5,7 @@ protocol TextCleanupEngine: Sendable {
     var displayName: String { get }
 
     func prepare() async throws
-    func clean(_ transcript: Transcript) async throws -> CleanedText
+    func clean(_ transcript: Transcript, level: PostProcessingLevel) async throws -> CleanedText
     func shutdown() async
 }
 

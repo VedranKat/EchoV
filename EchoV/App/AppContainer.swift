@@ -90,6 +90,7 @@ final class AppContainer {
             isHistoryEnabled: { settings.isHistoryEnabled },
             shouldDeleteTemporaryAudio: { settings.shouldDeleteTemporaryAudio },
             isPostProcessingEnabled: { settings.isPostProcessingEnabled },
+            postProcessingLevel: { settings.postProcessingLevel },
             onStateChanged: { appState.notifyStatusChanged() }
         )
 

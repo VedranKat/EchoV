@@ -46,6 +46,12 @@ final class AppSettings {
         }
     }
 
+    var postProcessingLevel: PostProcessingLevel {
+        didSet {
+            userDefaults.set(postProcessingLevel.rawValue, forKey: Keys.postProcessingLevel)
+        }
+    }
+
     var clipboardInsertionMode: ClipboardInsertionMode {
         didSet {
             userDefaults.set(clipboardInsertionMode.rawValue, forKey: Keys.clipboardInsertionMode)
@@ -113,6 +119,7 @@ final class AppSettings {
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
         self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
         self.isPostProcessingEnabled = userDefaults.object(forKey: Keys.isPostProcessingEnabled) as? Bool ?? false
+        self.postProcessingLevel = Self.loadPostProcessingLevel(from: userDefaults)
         self.clipboardInsertionMode = Self.loadClipboardInsertionMode(from: userDefaults)
         self.isProxyEnabled = userDefaults.object(forKey: Keys.isProxyEnabled) as? Bool ?? false
         self.httpProxyHost = userDefaults.string(forKey: Keys.httpProxyHost) ?? ""
@@ -164,6 +171,17 @@ final class AppSettings {
         return mode
     }
 
+    private static func loadPostProcessingLevel(from userDefaults: UserDefaults) -> PostProcessingLevel {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.postProcessingLevel),
+            let level = PostProcessingLevel(rawValue: rawValue)
+        else {
+            return .balanced
+        }
+
+        return level
+    }
+
     private func applyProxyEnvironment() {
         ProxyEnvironment.apply(proxySettings)
     }
@@ -176,6 +194,7 @@ private enum Keys {
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
     static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
     static let isPostProcessingEnabled = "settings.isPostProcessingEnabled"
+    static let postProcessingLevel = "settings.postProcessingLevel"
     static let clipboardInsertionMode = "settings.clipboardInsertionMode"
     static let isProxyEnabled = "settings.isProxyEnabled"
     static let httpProxyHost = "settings.httpProxyHost"

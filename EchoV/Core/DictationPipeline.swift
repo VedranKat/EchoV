@@ -15,6 +15,7 @@ final class DictationPipeline {
     private let isHistoryEnabled: @MainActor () -> Bool
     private let shouldDeleteTemporaryAudio: @MainActor () -> Bool
     private let isPostProcessingEnabled: @MainActor () -> Bool
+    private let postProcessingLevel: @MainActor () -> PostProcessingLevel
     private let onStateChanged: @MainActor () -> Void
 
     private var currentRecording: RecordedAudio?
@@ -32,6 +33,7 @@ final class DictationPipeline {
         isHistoryEnabled: @escaping @MainActor () -> Bool,
         shouldDeleteTemporaryAudio: @escaping @MainActor () -> Bool,
         isPostProcessingEnabled: @escaping @MainActor () -> Bool,
+        postProcessingLevel: @escaping @MainActor () -> PostProcessingLevel,
         onStateChanged: @escaping @MainActor () -> Void = {}
     ) {
         self.appState = appState
@@ -45,6 +47,7 @@ final class DictationPipeline {
         self.isHistoryEnabled = isHistoryEnabled
         self.shouldDeleteTemporaryAudio = shouldDeleteTemporaryAudio
         self.isPostProcessingEnabled = isPostProcessingEnabled
+        self.postProcessingLevel = postProcessingLevel
         self.onStateChanged = onStateChanged
     }
 
@@ -129,7 +132,7 @@ final class DictationPipeline {
             let cleanedText: CleanedText
             if isPostProcessingEnabled() {
                 setState(.cleaning)
-                cleanedText = try await cleanupEngine.clean(transcript)
+                cleanedText = try await cleanupEngine.clean(transcript, level: postProcessingLevel())
             } else {
                 cleanedText = CleanedText(text: transcript.text)
             }

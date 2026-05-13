@@ -6,7 +6,10 @@ final class GemmaPrimeTextCleanupEngineTests: XCTestCase {
         let model = StubLocalTextGenerationEngine(output: "  What should I do next?  ")
         let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)
 
-        let cleaned = try await engine.clean(Transcript(text: "um what should I do what should I do"))
+        let cleaned = try await engine.clean(
+            Transcript(text: "um what should I do what should I do"),
+            level: .balanced
+        )
 
         XCTAssertEqual(cleaned.text, "What should I do next?")
     }
@@ -15,11 +18,22 @@ final class GemmaPrimeTextCleanupEngineTests: XCTestCase {
         let model = StubLocalTextGenerationEngine(output: "Cleaned")
         let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)
 
-        _ = try await engine.clean(Transcript(text: "um I repeat myself"))
+        _ = try await engine.clean(Transcript(text: "um I repeat myself"), level: .minimal)
 
         let prompt = await model.lastPrompt
         XCTAssertEqual(prompt?.system.contains("EchoV Prime"), true)
+        XCTAssertEqual(prompt?.system.contains("smallest possible edits"), true)
         XCTAssertEqual(prompt?.user.contains("um I repeat myself"), true)
+    }
+
+    func testConciseLevelRequestsShortDirectOutput() async throws {
+        let model = StubLocalTextGenerationEngine(output: "Short output")
+        let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)
+
+        _ = try await engine.clean(Transcript(text: "I think maybe we should just go ahead"), level: .concise)
+
+        let prompt = await model.lastPrompt
+        XCTAssertEqual(prompt?.system.contains("short, direct text"), true)
     }
 }
 

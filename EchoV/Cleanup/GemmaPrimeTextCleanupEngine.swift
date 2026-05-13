@@ -14,8 +14,8 @@ struct GemmaPrimeTextCleanupEngine: TextCleanupEngine {
         try await textGenerationEngine.prepare()
     }
 
-    func clean(_ transcript: Transcript) async throws -> CleanedText {
-        let prompt = PrimeCleanupPrompt(transcript: transcript)
+    func clean(_ transcript: Transcript, level: PostProcessingLevel) async throws -> CleanedText {
+        let prompt = PrimeCleanupPrompt(transcript: transcript, level: level)
         let generatedText = try await textGenerationEngine.generate(prompt: prompt)
         return CleanedText(text: generatedText.trimmingCharacters(in: .whitespacesAndNewlines))
     }
