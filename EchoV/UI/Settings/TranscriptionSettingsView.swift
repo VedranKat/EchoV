@@ -11,43 +11,43 @@ struct TranscriptionSettingsView: View {
                     subtitle: "Manage local transcription and post-processing models."
                 )
 
-                SettingsCard {
-                    HStack(alignment: .center, spacing: 16) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(modelTone.color.opacity(0.15))
-                                .frame(width: 58, height: 58)
+                SettingsCard("Local Transcription", subtitle: "Use Parakeet locally for dictation. Choose \(ParakeetLocalModelLayout.downloadFolderName), \(ParakeetLocalModelLayout.expectedFolderName), or their parent folder.") {
+                    VStack(spacing: 12) {
+                        HStack(alignment: .center, spacing: 16) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(modelTone.color.opacity(0.15))
+                                    .frame(width: 58, height: 58)
 
-                            Image(systemName: "waveform.badge.magnifyingglass")
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundStyle(modelTone.color)
-                        }
-
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack(spacing: 8) {
-                                Text(modelTitle)
-                                    .font(.title3.weight(.semibold))
-                                StatusBadge(text: modelBadgeText, tone: modelTone)
+                                Image(systemName: "waveform.badge.magnifyingglass")
+                                    .font(.system(size: 24, weight: .semibold))
+                                    .foregroundStyle(modelTone.color)
                             }
 
-                            Text(container.modelStore.installState.message)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack(spacing: 8) {
+                                    Text(modelTitle)
+                                        .font(.title3.weight(.semibold))
+                                    StatusBadge(text: modelBadgeText, tone: modelTone)
+                                }
+
+                                Text(container.modelStore.installState.message)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer()
+
+                            Button(container.modelStore.installState.isInstalling ? "Installing..." : "Download") {
+                                installManagedModel()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(container.modelStore.installState.isInstalling)
                         }
 
-                        Spacer()
+                        DividerLine()
 
-                        Button(container.modelStore.installState.isInstalling ? "Installing..." : "Download") {
-                            installManagedModel()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(container.modelStore.installState.isInstalling)
-                    }
-                }
-
-                SettingsCard("Local Model", subtitle: "Choose \(ParakeetLocalModelLayout.downloadFolderName), \(ParakeetLocalModelLayout.expectedFolderName), or their parent folder.") {
-                    VStack(spacing: 12) {
                         SettingsRow(
                             icon: "folder",
                             title: "Selected folder",
