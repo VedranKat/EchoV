@@ -72,6 +72,14 @@ final class DictationPipeline {
         }
     }
 
+    func shutdownCleanupEngine() async {
+        let previousCleanupEngine = cleanupEngine
+        cleanupEngine = GemmaPrimeTextCleanupEngine(
+            textGenerationEngine: UnconfiguredLocalTextGenerationEngine()
+        )
+        await previousCleanupEngine.shutdown()
+    }
+
     func prepareCleanup() async throws {
         try await cleanupEngine.prepare()
     }

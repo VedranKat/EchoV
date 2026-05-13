@@ -1,9 +1,66 @@
 import SwiftUI
 
+enum SettingsTheme {
+    static func pageBackground(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .light
+            ? Color(red: 0.976, green: 0.980, blue: 0.986)
+            : Color(nsColor: .windowBackgroundColor)
+    }
+
+    static func sidebarBackground(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .light
+            ? Color(red: 0.918, green: 0.934, blue: 0.954)
+            : Color(nsColor: .controlBackgroundColor)
+    }
+
+    static func toolbarBackground(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .light
+            ? Color(red: 0.936, green: 0.948, blue: 0.965)
+            : Color(nsColor: .windowBackgroundColor)
+    }
+
+    static func controlFill(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .light
+            ? Color(red: 0.929, green: 0.941, blue: 0.957)
+            : Color(nsColor: .quaternaryLabelColor).opacity(0.8)
+    }
+
+    static func selectedSidebarFill(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .light
+            ? Color.accentColor.opacity(0.18)
+            : Color.accentColor.opacity(0.16)
+    }
+
+    static func cardShadow(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .light
+            ? Color(red: 0.365, green: 0.455, blue: 0.580).opacity(0.10)
+            : .clear
+    }
+
+    static func separatorOpacity(for colorScheme: ColorScheme) -> Double {
+        colorScheme == .light ? 0.18 : 0.35
+    }
+}
+
+private struct SettingsPageBackgroundModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.background(SettingsTheme.pageBackground(for: colorScheme))
+    }
+}
+
+extension View {
+    func settingsPageBackground() -> some View {
+        modifier(SettingsPageBackgroundModifier())
+    }
+}
+
 struct SettingsCard<Content: View>: View {
     let title: String?
     let subtitle: String?
     @ViewBuilder var content: Content
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         _ title: String? = nil,
@@ -37,11 +94,25 @@ struct SettingsCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+
+            if colorScheme == .light {
+                shape.fill(Color.white)
+            } else {
+                shape.fill(.regularMaterial)
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(.separator.opacity(0.35))
+                .strokeBorder(.separator.opacity(SettingsTheme.separatorOpacity(for: colorScheme)))
         }
+        .shadow(
+            color: SettingsTheme.cardShadow(for: colorScheme),
+            radius: colorScheme == .light ? 12 : 0,
+            x: 0,
+            y: colorScheme == .light ? 5 : 0
+        )
     }
 }
 
@@ -50,6 +121,7 @@ struct SettingsRow<Trailing: View>: View {
     let title: String
     let subtitle: String?
     @ViewBuilder var trailing: Trailing
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         icon: String,
@@ -69,7 +141,7 @@ struct SettingsRow<Trailing: View>: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 28, height: 28)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -130,16 +202,17 @@ struct StatusBadge: View {
 
 struct KeyboardShortcutChip: View {
     let text: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Text(text)
             .font(.system(.callout, design: .monospaced).weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(.separator.opacity(0.45))
+                    .strokeBorder(.separator.opacity(colorScheme == .light ? 0.22 : 0.45))
             }
     }
 }
@@ -175,6 +248,7 @@ struct SetupHelpButton: View {
     let message: String
 
     @State private var isShowingHelp = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button {
@@ -186,7 +260,7 @@ struct SetupHelpButton: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .background(.quaternary.opacity(0.8), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .help(title)
         .onHover { isHovering in

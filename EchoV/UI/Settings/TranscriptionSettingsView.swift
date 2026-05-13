@@ -274,7 +274,7 @@ struct TranscriptionSettingsView: View {
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .settingsPageBackground()
     }
 
     private var modelTitle: String {

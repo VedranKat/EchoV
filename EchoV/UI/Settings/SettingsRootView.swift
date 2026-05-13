@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsRootView: View {
     @State private var selection: SettingsSection = .status
     @State private var isSidebarVisible = true
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,9 +27,11 @@ struct SettingsRootView: View {
             }
             .padding(.horizontal, 14)
             .frame(height: 44)
-            .background(.bar)
+            .background(SettingsTheme.toolbarBackground(for: colorScheme))
             .overlay(alignment: .bottom) {
-                DividerLine()
+                Rectangle()
+                    .fill(.separator.opacity(colorScheme == .light ? 0.20 : 0.55))
+                    .frame(height: 1)
             }
 
             HStack(spacing: 0) {
@@ -38,7 +41,7 @@ struct SettingsRootView: View {
                         .transition(.move(edge: .leading).combined(with: .opacity))
 
                     Rectangle()
-                        .fill(.separator.opacity(0.55))
+                        .fill(.separator.opacity(colorScheme == .light ? 0.22 : 0.55))
                         .frame(width: 1)
                 }
 
@@ -72,6 +75,7 @@ struct SettingsRootView: View {
 
 private struct SettingsSidebar: View {
     @Binding var selection: SettingsSection
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -88,7 +92,11 @@ private struct SettingsSidebar: View {
                         .background {
                             if selection == section {
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(Color.accentColor.opacity(0.16))
+                                    .fill(SettingsTheme.selectedSidebarFill(for: colorScheme))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .strokeBorder(Color.accentColor.opacity(colorScheme == .light ? 0.16 : 0))
+                                    }
                             }
                         }
                 }
@@ -98,7 +106,7 @@ private struct SettingsSidebar: View {
             Spacer()
         }
         .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(SettingsTheme.sidebarBackground(for: colorScheme))
     }
 }
 

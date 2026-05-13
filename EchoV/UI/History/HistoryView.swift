@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryView: View {
     @Environment(AppContainer.self) private var container
     @State private var searchText = ""
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
@@ -22,7 +23,7 @@ struct HistoryView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                     Button(role: .destructive) {
                         Task {
@@ -51,7 +52,7 @@ struct HistoryView: View {
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .settingsPageBackground()
     }
 
     private var filteredItems: [TranscriptHistoryItem] {
@@ -67,6 +68,7 @@ struct HistoryView: View {
 
 private struct HistoryRow: View {
     let item: TranscriptHistoryItem
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -88,11 +90,25 @@ private struct HistoryRow: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+
+            if colorScheme == .light {
+                shape.fill(Color.white)
+            } else {
+                shape.fill(.regularMaterial)
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(.separator.opacity(0.35))
+                .strokeBorder(.separator.opacity(SettingsTheme.separatorOpacity(for: colorScheme)))
         }
+        .shadow(
+            color: SettingsTheme.cardShadow(for: colorScheme),
+            radius: colorScheme == .light ? 12 : 0,
+            x: 0,
+            y: colorScheme == .light ? 5 : 0
+        )
     }
 
     private func durationText(_ duration: TimeInterval) -> String {

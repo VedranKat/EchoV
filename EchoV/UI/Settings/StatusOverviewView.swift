@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StatusOverviewView: View {
     @Environment(AppContainer.self) private var container
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
@@ -16,7 +17,7 @@ struct StatusOverviewView: View {
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(.quaternary, in: Capsule())
+                            .background(SettingsTheme.controlFill(for: colorScheme), in: Capsule())
                     }
 
                     Text("Local dictation status, model readiness, and permissions.")
@@ -130,7 +131,7 @@ struct StatusOverviewView: View {
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .settingsPageBackground()
         .onAppear {
             container.refreshPermissions()
         }

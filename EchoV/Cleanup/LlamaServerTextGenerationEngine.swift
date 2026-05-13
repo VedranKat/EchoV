@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
     let id = "llama-server"
@@ -10,10 +11,10 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
     private let session: URLSession
     private var process: Process?
 
-    init(modelURL: URL, runtimeURL: URL?, port: Int = 18080) {
+    init(modelURL: URL, runtimeURL: URL?, port: Int? = nil) {
         self.modelURL = modelURL
         self.runtimeURL = runtimeURL
-        self.port = port
+        self.port = port ?? Self.availableLoopbackPort()
         self.session = Self.makeDirectLocalSession()
     }
 
@@ -52,6 +53,7 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
         do {
             try process.run()
             self.process = process
+            DiagnosticLog.write("llama-server started pid=\(process.processIdentifier) port=\(port)")
         } catch {
             throw AppError.cleanupFailed(details: "Could not start llama-server: \(error.localizedDescription)")
         }
@@ -109,15 +111,30 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
             return
         }
 
-        process.terminate()
+        DiagnosticLog.write("llama-server shutdown requested pid=\(process.processIdentifier)")
 
-        let deadline = Date().addingTimeInterval(2)
-        while process.isRunning, Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(100))
+        process.terminate()
+        await waitForExit(process, timeout: 2)
+
+        guard process.isRunning else {
+            DiagnosticLog.write("llama-server terminated pid=\(process.processIdentifier)")
+            return
         }
 
+        Darwin.kill(process.processIdentifier, SIGKILL)
+        await waitForExit(process, timeout: 1)
+
         if process.isRunning {
-            process.interrupt()
+            DiagnosticLog.write("llama-server force kill requested but process is still running pid=\(process.processIdentifier)")
+        } else {
+            DiagnosticLog.write("llama-server force killed pid=\(process.processIdentifier)")
+        }
+    }
+
+    private func waitForExit(_ process: Process, timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
         }
     }
 
@@ -183,6 +200,44 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.connectionProxyDictionary = [:]
         return URLSession(configuration: configuration)
+    }
+
+    private static func availableLoopbackPort() -> Int {
+        let socketDescriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard socketDescriptor >= 0 else {
+            return Int.random(in: 49_152...65_535)
+        }
+        defer {
+            Darwin.close(socketDescriptor)
+        }
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(0).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let bindResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                Darwin.bind(socketDescriptor, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard bindResult == 0 else {
+            return Int.random(in: 49_152...65_535)
+        }
+
+        var boundAddress = sockaddr_in()
+        var boundLength = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let nameResult = withUnsafeMutablePointer(to: &boundAddress) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                Darwin.getsockname(socketDescriptor, sockaddrPointer, &boundLength)
+            }
+        }
+        guard nameResult == 0 else {
+            return Int.random(in: 49_152...65_535)
+        }
+
+        return Int(in_port_t(bigEndian: boundAddress.sin_port))
     }
 
     private static func environment(for executableURL: URL) -> [String: String] {

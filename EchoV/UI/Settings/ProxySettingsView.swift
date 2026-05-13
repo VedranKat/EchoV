@@ -86,7 +86,7 @@ struct ProxySettingsView: View {
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .settingsPageBackground()
     }
 
     private func proxyRow(

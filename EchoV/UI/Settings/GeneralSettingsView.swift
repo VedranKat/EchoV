@@ -134,7 +134,7 @@ struct GeneralSettingsView: View {
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .settingsPageBackground()
         .onAppear {
             container.refreshPermissions()
         }
@@ -358,8 +358,7 @@ private final class HotkeyRecorderNSView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 8
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.5).cgColor
-        layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.08).cgColor
+        updateAppearance()
     }
 
     @available(*, unavailable)
@@ -374,6 +373,22 @@ private final class HotkeyRecorderNSView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
+    }
+
+    private func updateAppearance() {
+        let isLightMode = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+
+        layer?.borderColor = NSColor.separatorColor
+            .withAlphaComponent(isLightMode ? 0.22 : 0.5)
+            .cgColor
+        layer?.backgroundColor = isLightMode
+            ? NSColor.white.cgColor
+            : NSColor.quaternaryLabelColor.withAlphaComponent(0.08).cgColor
     }
 
     override func draw(_ dirtyRect: NSRect) {

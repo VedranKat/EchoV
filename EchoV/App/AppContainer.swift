@@ -120,14 +120,10 @@ final class AppContainer {
         registerHotkeys()
     }
 
-    func stop() {
+    func stop() async {
         hasStarted = false
         hotkeyService.unregister()
-        pipeline.setCleanupEngine(
-            GemmaPrimeTextCleanupEngine(
-                textGenerationEngine: UnconfiguredLocalTextGenerationEngine()
-            )
-        )
+        await pipeline.shutdownCleanupEngine()
     }
 
     func setToggleHotkey(_ binding: HotkeyBinding?) {
