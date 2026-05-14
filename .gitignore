@@ -8,5 +8,8 @@ dist/
 *.xcuserdata/
 *.xcuserstate
 .DS_Store
+.codex/
+AGENTS.md
+AGENTS.MD
 Tools/llama-*/
 Tools/llama-server
