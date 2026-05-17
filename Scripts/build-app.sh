@@ -26,6 +26,8 @@ cp "$SCRATCH_PATH/$CONFIGURATION/EchoV" "$MACOS_DIR/EchoV"
 cp "$ROOT_DIR/Packaging/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$ROOT_DIR/Packaging/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$RESOURCES_DIR/THIRD_PARTY_NOTICES.md"
+mkdir -p "$RESOURCES_DIR/SpeakerVerifier"
+cp "$ROOT_DIR/Tools/SpeakerVerifier/speaker_verifier.py" "$RESOURCES_DIR/SpeakerVerifier/speaker_verifier.py"
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
 codesign \

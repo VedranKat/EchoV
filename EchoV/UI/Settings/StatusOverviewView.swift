@@ -141,8 +141,12 @@ struct StatusOverviewView: View {
         switch container.appState.state {
         case .idle:
             "Ready"
+        case .listening:
+            "Listening"
         case .recording:
             "Recording"
+        case .voiceGateRecording:
+            "Recording Speech"
         case .transcribing:
             "Transcribing"
         case .cleaning:
@@ -171,8 +175,12 @@ struct StatusOverviewView: View {
         return switch container.appState.state {
         case .idle:
             "Use the global hotkey while focused in the app where you want the transcript inserted."
+        case .listening:
+            "Voice Gate is armed. Speak when ready, or press the Voice Gate hotkey again to mute."
         case .recording:
             "Speak naturally. Stop recording when you are done."
+        case .voiceGateRecording:
+            "Speech detected. EchoV will transcribe after the configured silence timeout."
         case .transcribing(let status):
             status
         case .cleaning:
@@ -192,8 +200,12 @@ struct StatusOverviewView: View {
         switch container.appState.state {
         case .idle:
             "checkmark"
+        case .listening:
+            "ear"
         case .recording:
             "record.circle"
+        case .voiceGateRecording:
+            "waveform.circle"
         case .transcribing, .cleaning:
             "waveform"
         case .inserting:
@@ -211,7 +223,7 @@ struct StatusOverviewView: View {
         switch container.appState.state {
         case .idle, .completed:
             .success
-        case .recording, .transcribing, .cleaning, .inserting:
+        case .listening, .recording, .voiceGateRecording, .transcribing, .cleaning, .inserting:
             .active
         case .failed:
             .danger
@@ -224,7 +236,9 @@ struct StatusOverviewView: View {
         switch container.appState.state {
         case .idle:
             "Ready"
-        case .recording:
+        case .listening:
+            "Armed"
+        case .recording, .voiceGateRecording:
             "Live"
         case .transcribing, .cleaning, .inserting:
             "Working"

@@ -2,7 +2,9 @@ import Foundation
 
 enum DictationState: Equatable {
     case idle
+    case listening
     case recording(startedAt: Date)
+    case voiceGateRecording(startedAt: Date)
     case transcribing(status: String)
     case cleaning
     case inserting
@@ -14,8 +16,12 @@ enum DictationState: Equatable {
         switch self {
         case .idle:
             "Ready"
+        case .listening:
+            "Listening for speech..."
         case .recording:
             "Recording..."
+        case .voiceGateRecording:
+            "Recording speech..."
         case .transcribing(let status):
             status
         case .cleaning:

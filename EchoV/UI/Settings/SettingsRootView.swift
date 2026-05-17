@@ -59,6 +59,8 @@ struct SettingsRootView: View {
             StatusOverviewView()
         case .dictation:
             GeneralSettingsView()
+        case .voiceGate:
+            VoiceGateSettingsView()
         case .model:
             TranscriptionSettingsView()
         case .history:
@@ -113,6 +115,7 @@ private struct SettingsSidebar: View {
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case status
     case dictation
+    case voiceGate
     case model
     case history
     case proxy
@@ -127,6 +130,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "Status"
         case .dictation:
             "Dictation"
+        case .voiceGate:
+            "Voice Gate"
         case .model:
             "Model"
         case .history:
@@ -146,6 +151,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "gauge.with.dots.needle.bottom.50percent"
         case .dictation:
             "mic"
+        case .voiceGate:
+            "ear"
         case .model:
             "waveform.badge.magnifyingglass"
         case .history:

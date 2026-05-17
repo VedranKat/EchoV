@@ -40,7 +40,7 @@ struct GeneralSettingsView: View {
                             subtitle: "Restore Option + Space and §."
                         ) {
                             Button("Restore") {
-                                container.resetHotkeysToDefaults()
+                                container.resetDictationHotkeysToDefaults()
                             }
                         }
 
@@ -365,7 +365,7 @@ private enum EditableHotkey: String, Identifiable {
 
 }
 
-private struct HotkeyRecorderSheet: View {
+struct HotkeyRecorderSheet: View {
     let title: String
     let onCancel: () -> Void
     let onCapture: (HotkeyBinding) -> Void

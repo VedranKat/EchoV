@@ -115,8 +115,21 @@ final class DictationPipeline {
     func stopTranscribeAndInsert() async {
         do {
             let recordedAudio = try await recorder.stop()
-            currentRecording = recordedAudio
+            await transcribeAndInsert(recordedAudio)
+        } catch let error as AppError {
+            rememberFailedAudio()
+            fail(error)
+        } catch {
+            rememberFailedAudio()
+            fail(.unknown(details: error.localizedDescription))
+        }
+    }
 
+    func transcribeAndInsert(_ recordedAudio: RecordedAudio) async {
+        currentRecording = recordedAudio
+        lastNormalizedAudioURL = nil
+
+        do {
             setState(.transcribing(status: "Preparing audio..."))
             let normalizedAudioURL = try await normalizer.normalize(recordedAudio.fileURL)
             lastNormalizedAudioURL = normalizedAudioURL

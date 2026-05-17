@@ -8,6 +8,7 @@ EchoV includes, downloads, or directly supports the third-party components liste
 | --- | --- | --- | --- |
 | FluidAudio SDK | Swift package used for local speech transcription | Apache-2.0 | https://github.com/FluidInference/FluidAudio |
 | Parakeet v3 model | Downloadable or user-selected ASR model | CC-BY-4.0 | NVIDIA `nvidia/parakeet-tdt-0.6b-v3`, https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 |
+| SpeechBrain ECAPA-TDNN model | Optional Voice Gate speaker verification model | Apache-2.0 | SpeechBrain `speechbrain/spkrec-ecapa-voxceleb`, https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb |
 | Gemma 4 E2B IT GGUF | Downloadable or user-selected local post-processing model | Apache-2.0 | Unsloth `unsloth/gemma-4-E2B-it-GGUF`, derived from Google DeepMind Gemma 4 E2B IT, https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF |
 | llama.cpp | Downloadable or user-selected local GGUF inference runtime | MIT | Copyright (c) 2023-2026 The ggml authors, https://github.com/ggml-org/llama.cpp |
 | cpp-httplib | Bundled with llama.cpp for local HTTP serving | MIT | Copyright (c) 2017 yhirose, https://github.com/yhirose/cpp-httplib |

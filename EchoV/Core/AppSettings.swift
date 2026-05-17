@@ -18,6 +18,24 @@ final class AppSettings {
         }
     }
 
+    var voiceGateHotkey: HotkeyBinding? {
+        didSet {
+            saveHotkey(voiceGateHotkey, forKey: Keys.voiceGateHotkey)
+        }
+    }
+
+    var primeToggleHotkey: HotkeyBinding? {
+        didSet {
+            saveHotkey(primeToggleHotkey, forKey: Keys.primeToggleHotkey)
+        }
+    }
+
+    var voiceGateVerifierToggleHotkey: HotkeyBinding? {
+        didSet {
+            saveHotkey(voiceGateVerifierToggleHotkey, forKey: Keys.voiceGateVerifierToggleHotkey)
+        }
+    }
+
     var isHistoryEnabled: Bool {
         didSet {
             userDefaults.set(isHistoryEnabled, forKey: Keys.isHistoryEnabled)
@@ -55,6 +73,30 @@ final class AppSettings {
     var clipboardInsertionMode: ClipboardInsertionMode {
         didSet {
             userDefaults.set(clipboardInsertionMode.rawValue, forKey: Keys.clipboardInsertionMode)
+        }
+    }
+
+    var voiceGateSilenceTimeout: VoiceGateSilenceTimeout {
+        didSet {
+            userDefaults.set(voiceGateSilenceTimeout.rawValue, forKey: Keys.voiceGateSilenceTimeout)
+        }
+    }
+
+    var voiceGateSensitivity: VoiceGateSensitivity {
+        didSet {
+            userDefaults.set(voiceGateSensitivity.rawValue, forKey: Keys.voiceGateSensitivity)
+        }
+    }
+
+    var isVoiceGateSpeakerMatchEnabled: Bool {
+        didSet {
+            userDefaults.set(isVoiceGateSpeakerMatchEnabled, forKey: Keys.isVoiceGateSpeakerMatchEnabled)
+        }
+    }
+
+    var voiceGateSpeakerMatchStrictness: VoiceGateSpeakerMatchStrictness {
+        didSet {
+            userDefaults.set(voiceGateSpeakerMatchStrictness.rawValue, forKey: Keys.voiceGateSpeakerMatchStrictness)
         }
     }
 
@@ -113,14 +155,36 @@ final class AppSettings {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        self.toggleHotkey = Self.loadHotkey(forKey: Keys.toggleHotkey, from: userDefaults) ?? .defaultToggle
+        self.toggleHotkey = Self.loadHotkey(
+            forKey: Keys.toggleHotkey,
+            from: userDefaults,
+            migratingDefaultFrom: .legacyDefaultToggle,
+            to: .defaultToggle
+        ) ?? .defaultToggle
         self.pushToTalkHotkey = Self.loadHotkey(forKey: Keys.pushToTalkHotkey, from: userDefaults) ?? .defaultPushToTalk
+        self.voiceGateHotkey = Self.loadHotkey(forKey: Keys.voiceGateHotkey, from: userDefaults) ?? .defaultVoiceGate
+        self.primeToggleHotkey = Self.loadHotkey(
+            forKey: Keys.primeToggleHotkey,
+            from: userDefaults,
+            migratingDefaultFrom: .legacyDefaultPrimeToggle,
+            to: .defaultPrimeToggle
+        ) ?? .defaultPrimeToggle
+        self.voiceGateVerifierToggleHotkey = Self.loadHotkey(
+            forKey: Keys.voiceGateVerifierToggleHotkey,
+            from: userDefaults,
+            migratingDefaultFrom: .legacyDefaultVoiceGateVerifierToggle,
+            to: .defaultVoiceGateVerifierToggle
+        ) ?? .defaultVoiceGateVerifierToggle
         self.isHistoryEnabled = userDefaults.object(forKey: Keys.isHistoryEnabled) as? Bool ?? true
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
         self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
         self.isPostProcessingEnabled = userDefaults.object(forKey: Keys.isPostProcessingEnabled) as? Bool ?? false
         self.postProcessingLevel = Self.loadPostProcessingLevel(from: userDefaults)
         self.clipboardInsertionMode = Self.loadClipboardInsertionMode(from: userDefaults)
+        self.voiceGateSilenceTimeout = Self.loadVoiceGateSilenceTimeout(from: userDefaults)
+        self.voiceGateSensitivity = Self.loadVoiceGateSensitivity(from: userDefaults)
+        self.isVoiceGateSpeakerMatchEnabled = userDefaults.object(forKey: Keys.isVoiceGateSpeakerMatchEnabled) as? Bool ?? false
+        self.voiceGateSpeakerMatchStrictness = Self.loadVoiceGateSpeakerMatchStrictness(from: userDefaults)
         self.isProxyEnabled = userDefaults.object(forKey: Keys.isProxyEnabled) as? Bool ?? false
         self.httpProxyHost = userDefaults.string(forKey: Keys.httpProxyHost) ?? ""
         self.httpProxyPort = userDefaults.string(forKey: Keys.httpProxyPort) ?? ""
@@ -131,6 +195,14 @@ final class AppSettings {
     }
 
     func resetHotkeysToDefaults() {
+        toggleHotkey = .defaultToggle
+        pushToTalkHotkey = .defaultPushToTalk
+        voiceGateHotkey = .defaultVoiceGate
+        primeToggleHotkey = .defaultPrimeToggle
+        voiceGateVerifierToggleHotkey = .defaultVoiceGateVerifierToggle
+    }
+
+    func resetDictationHotkeysToDefaults() {
         toggleHotkey = .defaultToggle
         pushToTalkHotkey = .defaultPushToTalk
     }
@@ -148,7 +220,12 @@ final class AppSettings {
         }
     }
 
-    private static func loadHotkey(forKey key: String, from userDefaults: UserDefaults) -> HotkeyBinding? {
+    private static func loadHotkey(
+        forKey key: String,
+        from userDefaults: UserDefaults,
+        migratingDefaultFrom oldDefault: HotkeyBinding? = nil,
+        to newDefault: HotkeyBinding? = nil
+    ) -> HotkeyBinding? {
         if userDefaults.bool(forKey: "\(key).cleared") {
             return nil
         }
@@ -157,7 +234,15 @@ final class AppSettings {
             return nil
         }
 
-        return try? JSONDecoder().decode(HotkeyBinding.self, from: data)
+        guard let hotkey = try? JSONDecoder().decode(HotkeyBinding.self, from: data) else {
+            return nil
+        }
+
+        if let oldDefault, let newDefault, hotkey == oldDefault {
+            return newDefault
+        }
+
+        return hotkey
     }
 
     private static func loadClipboardInsertionMode(from userDefaults: UserDefaults) -> ClipboardInsertionMode {
@@ -182,6 +267,39 @@ final class AppSettings {
         return level
     }
 
+    private static func loadVoiceGateSilenceTimeout(from userDefaults: UserDefaults) -> VoiceGateSilenceTimeout {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.voiceGateSilenceTimeout),
+            let timeout = VoiceGateSilenceTimeout(rawValue: rawValue)
+        else {
+            return .balanced
+        }
+
+        return timeout
+    }
+
+    private static func loadVoiceGateSensitivity(from userDefaults: UserDefaults) -> VoiceGateSensitivity {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.voiceGateSensitivity),
+            let sensitivity = VoiceGateSensitivity(rawValue: rawValue)
+        else {
+            return .medium
+        }
+
+        return sensitivity
+    }
+
+    private static func loadVoiceGateSpeakerMatchStrictness(from userDefaults: UserDefaults) -> VoiceGateSpeakerMatchStrictness {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.voiceGateSpeakerMatchStrictness),
+            let strictness = VoiceGateSpeakerMatchStrictness(rawValue: rawValue)
+        else {
+            return .balanced
+        }
+
+        return strictness
+    }
+
     private func applyProxyEnvironment() {
         ProxyEnvironment.apply(proxySettings)
     }
@@ -190,12 +308,19 @@ final class AppSettings {
 private enum Keys {
     static let toggleHotkey = "settings.toggleHotkey"
     static let pushToTalkHotkey = "settings.pushToTalkHotkey"
+    static let voiceGateHotkey = "settings.voiceGateHotkey"
+    static let primeToggleHotkey = "settings.primeToggleHotkey"
+    static let voiceGateVerifierToggleHotkey = "settings.voiceGateVerifierToggleHotkey"
     static let isHistoryEnabled = "settings.isHistoryEnabled"
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
     static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
     static let isPostProcessingEnabled = "settings.isPostProcessingEnabled"
     static let postProcessingLevel = "settings.postProcessingLevel"
     static let clipboardInsertionMode = "settings.clipboardInsertionMode"
+    static let voiceGateSilenceTimeout = "settings.voiceGateSilenceTimeout"
+    static let voiceGateSensitivity = "settings.voiceGateSensitivity"
+    static let isVoiceGateSpeakerMatchEnabled = "settings.isVoiceGateSpeakerMatchEnabled"
+    static let voiceGateSpeakerMatchStrictness = "settings.voiceGateSpeakerMatchStrictness"
     static let isProxyEnabled = "settings.isProxyEnabled"
     static let httpProxyHost = "settings.httpProxyHost"
     static let httpProxyPort = "settings.httpProxyPort"
