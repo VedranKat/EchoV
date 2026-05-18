@@ -53,6 +53,11 @@ private struct ReleaseNote: Identifiable {
 
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "v1.1.1",
+            date: nil,
+            summary: "Bug fixes and clearer status messages for Prime post-processing."
+        ),
+        ReleaseNote(
             version: "v1.1.0",
             date: nil,
             summary: "Adds microphone selection and three post-processing levels, with a leaner Llama server lifecycle to reduce RAM usage plus light mode color and interface polish."

@@ -7,15 +7,33 @@ protocol AudioRecorder: Sendable {
     func stop() async throws -> RecordedAudio
 }
 
+private final class AudioRecorderWriteErrorStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var message: String?
+
+    func remember(_ error: Error) {
+        lock.withLock {
+            message = error.localizedDescription
+        }
+    }
+
+    func takeMessage() -> String? {
+        lock.withLock {
+            defer { message = nil }
+            return message
+        }
+    }
+}
+
 actor AVFoundationAudioRecorder: AudioRecorder {
     private let microphonePermission: MicrophonePermissionService
     private let minimumDuration: TimeInterval
     private let selectedMicrophoneDeviceID: @MainActor @Sendable () -> String?
+    private let writeErrorStore = AudioRecorderWriteErrorStore()
 
     private var recording: RecordedAudio?
     private var engine: AVAudioEngine?
     private var audioFile: AVAudioFile?
-    private var writeError: Error?
 
     init(
         microphonePermission: MicrophonePermissionService,
@@ -46,13 +64,12 @@ actor AVFoundationAudioRecorder: AudioRecorder {
         }
 
         let audioFile = try AVAudioFile(forWriting: url, settings: inputFormat.settings)
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+        let writeErrorStore = writeErrorStore
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
             do {
                 try audioFile.write(from: buffer)
             } catch {
-                Task {
-                    await self?.rememberWriteError(error)
-                }
+                writeErrorStore.remember(error)
             }
         }
 
@@ -67,7 +84,7 @@ actor AVFoundationAudioRecorder: AudioRecorder {
         self.engine = engine
         self.audioFile = audioFile
         self.recording = recording
-        self.writeError = nil
+        _ = writeErrorStore.takeMessage()
         return recording
     }
 
@@ -84,9 +101,8 @@ actor AVFoundationAudioRecorder: AudioRecorder {
         self.engine = nil
         self.audioFile = nil
 
-        if let writeError {
-            self.writeError = nil
-            throw AppError.recordingFailed(details: writeError.localizedDescription)
+        if let writeErrorMessage = writeErrorStore.takeMessage() {
+            throw AppError.recordingFailed(details: writeErrorMessage)
         }
 
         guard stopped.duration >= minimumDuration else {
@@ -98,10 +114,6 @@ actor AVFoundationAudioRecorder: AudioRecorder {
         }
 
         return stopped
-    }
-
-    private func rememberWriteError(_ error: Error) {
-        writeError = error
     }
 
     private func selectInputDevice(with uid: String, for inputNode: AVAudioInputNode) throws {
