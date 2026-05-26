@@ -9,6 +9,8 @@ APP_DIR="$ROOT_DIR/dist/EchoV.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
+SPEAKER_VERIFIER_ORT_DIR="${SPEAKER_VERIFIER_ORT_DIR:-"/private/tmp/echov-speaker-verifier/onnxruntime/onnxruntime-osx-arm64-1.19.2"}"
+SPEAKER_VERIFIER_SUPPORT_DIR="$RESOURCES_DIR/SpeakerVerifierRuntime"
 
 cd "$ROOT_DIR"
 
@@ -26,9 +28,42 @@ cp "$SCRATCH_PATH/$CONFIGURATION/EchoV" "$MACOS_DIR/EchoV"
 cp "$ROOT_DIR/Packaging/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$ROOT_DIR/Packaging/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$RESOURCES_DIR/THIRD_PARTY_NOTICES.md"
-mkdir -p "$RESOURCES_DIR/SpeakerVerifier"
-cp "$ROOT_DIR/Tools/SpeakerVerifier/speaker_verifier.py" "$RESOURCES_DIR/SpeakerVerifier/speaker_verifier.py"
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
+
+if [[ ! -f "$SPEAKER_VERIFIER_ORT_DIR/include/onnxruntime_cxx_api.h" || ! -f "$SPEAKER_VERIFIER_ORT_DIR/lib/libonnxruntime.1.19.2.dylib" ]]; then
+  echo "Missing ONNX Runtime C package at $SPEAKER_VERIFIER_ORT_DIR" >&2
+  echo "Set SPEAKER_VERIFIER_ORT_DIR to onnxruntime-osx-arm64-1.19.2 before building EchoV." >&2
+  exit 1
+fi
+
+mkdir -p "$SPEAKER_VERIFIER_SUPPORT_DIR/bin" "$SPEAKER_VERIFIER_SUPPORT_DIR/lib"
+
+clang++ \
+  -std=c++17 \
+  -O3 \
+  -I "$SPEAKER_VERIFIER_ORT_DIR/include" \
+  "$ROOT_DIR/Tools/SpeakerVerifier/Native/speaker_verifier.cpp" \
+  -L "$SPEAKER_VERIFIER_ORT_DIR/lib" \
+  -lonnxruntime \
+  -Wl,-rpath,@loader_path/../lib \
+  -framework AudioToolbox \
+  -framework CoreFoundation \
+  -o "$SPEAKER_VERIFIER_SUPPORT_DIR/bin/speaker-verifier"
+
+cp "$SPEAKER_VERIFIER_ORT_DIR/lib/libonnxruntime.1.19.2.dylib" "$SPEAKER_VERIFIER_SUPPORT_DIR/lib/libonnxruntime.1.19.2.dylib"
+ln -sf libonnxruntime.1.19.2.dylib "$SPEAKER_VERIFIER_SUPPORT_DIR/lib/libonnxruntime.dylib"
+cp "$SPEAKER_VERIFIER_ORT_DIR/LICENSE" "$SPEAKER_VERIFIER_SUPPORT_DIR/LICENSE.onnxruntime"
+cp "$SPEAKER_VERIFIER_ORT_DIR/ThirdPartyNotices.txt" "$SPEAKER_VERIFIER_SUPPORT_DIR/NOTICE.onnxruntime"
+
+codesign \
+  --force \
+  --sign "$CODE_SIGN_IDENTITY" \
+  "$SPEAKER_VERIFIER_SUPPORT_DIR/bin/speaker-verifier"
+
+codesign \
+  --force \
+  --sign "$CODE_SIGN_IDENTITY" \
+  "$SPEAKER_VERIFIER_SUPPORT_DIR/lib/libonnxruntime.1.19.2.dylib"
 
 codesign \
   --force \

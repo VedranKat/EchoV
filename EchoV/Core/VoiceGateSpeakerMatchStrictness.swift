@@ -27,9 +27,9 @@ enum VoiceGateSpeakerMatchStrictness: String, CaseIterable, Identifiable {
     var minimumSimilarity: Double {
         switch self {
         case .balanced:
-            0.35
+            0.20
         case .strict:
-            0.50
+            0.45
         }
     }
 }

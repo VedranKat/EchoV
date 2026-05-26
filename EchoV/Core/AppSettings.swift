@@ -100,6 +100,12 @@ final class AppSettings {
         }
     }
 
+    var voiceGateSpeakerVerificationMode: VoiceGateSpeakerVerificationMode {
+        didSet {
+            userDefaults.set(voiceGateSpeakerVerificationMode.rawValue, forKey: Keys.voiceGateSpeakerVerificationMode)
+        }
+    }
+
     var isProxyEnabled: Bool {
         didSet {
             userDefaults.set(isProxyEnabled, forKey: Keys.isProxyEnabled)
@@ -185,6 +191,7 @@ final class AppSettings {
         self.voiceGateSensitivity = Self.loadVoiceGateSensitivity(from: userDefaults)
         self.isVoiceGateSpeakerMatchEnabled = userDefaults.object(forKey: Keys.isVoiceGateSpeakerMatchEnabled) as? Bool ?? false
         self.voiceGateSpeakerMatchStrictness = Self.loadVoiceGateSpeakerMatchStrictness(from: userDefaults)
+        self.voiceGateSpeakerVerificationMode = Self.loadVoiceGateSpeakerVerificationMode(from: userDefaults)
         self.isProxyEnabled = userDefaults.object(forKey: Keys.isProxyEnabled) as? Bool ?? false
         self.httpProxyHost = userDefaults.string(forKey: Keys.httpProxyHost) ?? ""
         self.httpProxyPort = userDefaults.string(forKey: Keys.httpProxyPort) ?? ""
@@ -300,6 +307,17 @@ final class AppSettings {
         return strictness
     }
 
+    private static func loadVoiceGateSpeakerVerificationMode(from userDefaults: UserDefaults) -> VoiceGateSpeakerVerificationMode {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.voiceGateSpeakerVerificationMode),
+            let mode = VoiceGateSpeakerVerificationMode(rawValue: rawValue)
+        else {
+            return .startOnly
+        }
+
+        return mode
+    }
+
     private func applyProxyEnvironment() {
         ProxyEnvironment.apply(proxySettings)
     }
@@ -321,6 +339,7 @@ private enum Keys {
     static let voiceGateSensitivity = "settings.voiceGateSensitivity"
     static let isVoiceGateSpeakerMatchEnabled = "settings.isVoiceGateSpeakerMatchEnabled"
     static let voiceGateSpeakerMatchStrictness = "settings.voiceGateSpeakerMatchStrictness"
+    static let voiceGateSpeakerVerificationMode = "settings.voiceGateSpeakerVerificationMode"
     static let isProxyEnabled = "settings.isProxyEnabled"
     static let httpProxyHost = "settings.httpProxyHost"
     static let httpProxyPort = "settings.httpProxyPort"

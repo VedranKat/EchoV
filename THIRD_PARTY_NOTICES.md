@@ -8,7 +8,8 @@ EchoV includes, downloads, or directly supports the third-party components liste
 | --- | --- | --- | --- |
 | FluidAudio SDK | Swift package used for local speech transcription | Apache-2.0 | https://github.com/FluidInference/FluidAudio |
 | Parakeet v3 model | Downloadable or user-selected ASR model | CC-BY-4.0 | NVIDIA `nvidia/parakeet-tdt-0.6b-v3`, https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 |
-| SpeechBrain ECAPA-TDNN model | Optional Voice Gate speaker verification model | Apache-2.0 | SpeechBrain `speechbrain/spkrec-ecapa-voxceleb`, https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb |
+| SpeechBrain ECAPA-TDNN model | Optional Voice Gate speaker verification model converted/repackaged to ONNX for local runtime use; EchoV did not train or author the upstream model | Apache-2.0 | SpeechBrain `speechbrain/spkrec-ecapa-voxceleb`, https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb |
+| ONNX Runtime | Bundled macOS runtime library used by the Voice Gate speaker verifier helper | MIT | Microsoft, https://github.com/microsoft/onnxruntime |
 | Gemma 4 E2B IT GGUF | Downloadable or user-selected local post-processing model | Apache-2.0 | Unsloth `unsloth/gemma-4-E2B-it-GGUF`, derived from Google DeepMind Gemma 4 E2B IT, https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF |
 | llama.cpp | Downloadable or user-selected local GGUF inference runtime | MIT | Copyright (c) 2023-2026 The ggml authors, https://github.com/ggml-org/llama.cpp |
 | cpp-httplib | Bundled with llama.cpp for local HTTP serving | MIT | Copyright (c) 2017 yhirose, https://github.com/yhirose/cpp-httplib |
@@ -18,6 +19,20 @@ EchoV includes, downloads, or directly supports the third-party components liste
 | subprocess.h | Bundled with llama.cpp as a process launching helper | Public Domain | https://github.com/sheredom/subprocess.h |
 | VBx | Bundled with FluidAudio for speaker diarization clustering | Apache-2.0 | Copyright 2021-2024 BUT Speech@FIT, https://github.com/BUTSpeechFIT/VBx |
 | fastcluster | Bundled with FluidAudio for hierarchical clustering | BSD-2-Clause | Copyright (c) 2011 Daniel Mullner; later changes copyright Google Inc., https://github.com/fastcluster/fastcluster |
+
+## Model References
+
+The SpeechBrain ECAPA-TDNN model card requests citation of SpeechBrain for
+research or business use and references the ECAPA-TDNN paper:
+
+- SpeechBrain: A General-Purpose Speech Toolkit, Ravanelli et al.,
+  arXiv:2106.04624, 2021.
+- ECAPA-TDNN: Emphasized Channel Attention, Propagation and Aggregation in
+  TDNN Based Speaker Verification, Desplanques, Thienpondt, and Demuynck,
+  Interspeech 2020, pages 3830-3834.
+
+The EchoV app bundle also includes ONNX Runtime's own license and third-party
+notices under `Contents/Resources/SpeakerVerifierRuntime/`.
 
 ## License Texts
 

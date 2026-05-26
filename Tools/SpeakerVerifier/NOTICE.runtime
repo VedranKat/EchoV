@@ -1,0 +1,52 @@
+SpeechBrain ECAPA Speaker Verifier ONNX Runtime
+
+This package contains a native macOS arm64 speaker verification helper, an
+ONNX conversion of the SpeechBrain ECAPA-TDNN speaker embedding model, a
+frozen SpeechBrain filterbank matrix, and ONNX Runtime dynamic libraries for
+local inference.
+
+This package does not train or author the upstream speaker embedding model.
+It repackages and converts the upstream SpeechBrain model to ONNX so it is
+easier to run locally without Python, pip, PyTorch, torchaudio, or SpeechBrain
+installed.
+
+Model attribution:
+- Upstream model: speechbrain/spkrec-ecapa-voxceleb
+- Upstream project: https://github.com/speechbrain/speechbrain
+- Upstream model page: https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb
+- Upstream license: Apache-2.0
+- Upstream training data: VoxCeleb1 and VoxCeleb2 training data
+- Upstream expected audio: 16 kHz single-channel recordings
+
+Conversion notes:
+- The ECAPA embedding network was exported from the upstream SpeechBrain
+  PyTorch checkpoint to ONNX for local inference.
+- The model was not retrained.
+- The model weights remain derived from the upstream SpeechBrain release.
+- This package provides the ONNX conversion, native helper, and runtime
+  packaging.
+- The SpeechBrain filterbank matrix used by the Python reference path was
+  frozen into model/fbank-80x201-f32.bin so the native helper can reproduce
+  the same preprocessing without Python, pip, PyTorch, torchaudio, or
+  SpeechBrain at runtime.
+
+Bundled runtime:
+- ONNX Runtime 1.19.2 for macOS arm64 is included under lib/.
+- ONNX Runtime's license and third-party notices are included as
+  LICENSE.onnxruntime and NOTICE.onnxruntime.
+
+References requested by the upstream model card:
+- SpeechBrain: A General-Purpose Speech Toolkit, Ravanelli et al.,
+  arXiv:2106.04624, 2021.
+- ECAPA-TDNN: Emphasized Channel Attention, Propagation and Aggregation in
+  TDNN Based Speaker Verification, Desplanques, Thienpondt, and Demuynck,
+  Interspeech 2020, pages 3830-3834.
+
+Limitations:
+- The upstream SpeechBrain model card states that the SpeechBrain team does
+  not provide a warranty for performance achieved on other datasets.
+- This ONNX conversion is not a retrained model and does not add any upstream
+  performance warranty.
+
+This package is not affiliated with or endorsed by SpeechBrain, Microsoft,
+ONNX, or the ONNX Runtime project.

@@ -8,6 +8,7 @@ final class ModelStore {
     private let installer: ParakeetModelInstaller
     private let llamaRuntimeInstaller: LlamaRuntimeInstaller
     private let postProcessingInstaller: Gemma4PostProcessingModelInstaller
+    private let speakerVerifierRuntimeInstaller: SpeakerVerifierRuntimeInstaller
     private let proxySettings: @MainActor () -> ProxySettings
     private let userDefaults: UserDefaults
     private let asrBookmarkKey = "selectedASRModelBookmark"
@@ -23,12 +24,14 @@ final class ModelStore {
     var selectedPostProcessingModel: PostProcessingModelSelection?
     var postProcessingValidation: ModelValidationResult = .notSelected
     var postProcessingInstallState: ModelInstallState = .idle
+    var speakerVerifierRuntimeInstallState: ModelInstallState = .idle
 
     init(
         validator: any ModelValidator = ParakeetModelValidator(),
         installer: ParakeetModelInstaller = ParakeetModelInstaller(),
         llamaRuntimeInstaller: LlamaRuntimeInstaller = LlamaRuntimeInstaller(),
         postProcessingInstaller: Gemma4PostProcessingModelInstaller = Gemma4PostProcessingModelInstaller(),
+        speakerVerifierRuntimeInstaller: SpeakerVerifierRuntimeInstaller = SpeakerVerifierRuntimeInstaller(),
         proxySettings: @escaping @MainActor () -> ProxySettings = { .disabled },
         userDefaults: UserDefaults = .standard
     ) {
@@ -36,6 +39,7 @@ final class ModelStore {
         self.installer = installer
         self.llamaRuntimeInstaller = llamaRuntimeInstaller
         self.postProcessingInstaller = postProcessingInstaller
+        self.speakerVerifierRuntimeInstaller = speakerVerifierRuntimeInstaller
         self.proxySettings = proxySettings
         self.userDefaults = userDefaults
     }
@@ -218,6 +222,33 @@ final class ModelStore {
         }
     }
 
+    func installManagedSpeakerVerifierRuntime() async {
+        guard !speakerVerifierRuntimeInstallState.isInstalling else {
+            return
+        }
+
+        speakerVerifierRuntimeInstallState = .installing("Starting speaker verifier model download...")
+
+        do {
+            let proxySettings = proxySettings()
+            guard proxySettings.isValid else {
+                speakerVerifierRuntimeInstallState = .failed(Self.invalidProxyMessage(prefix: "Speaker verifier model install failed"))
+                return
+            }
+
+            _ = try await speakerVerifierRuntimeInstaller.install(proxySettings: proxySettings) { [weak self] detail in
+                Task { @MainActor in
+                    self?.speakerVerifierRuntimeInstallState = .installing(detail)
+                }
+            }
+            speakerVerifierRuntimeInstallState = .installed
+        } catch {
+            let message = "Speaker verifier model install failed: \(error.localizedDescription)"
+            DiagnosticLog.write(message)
+            speakerVerifierRuntimeInstallState = .failed(message)
+        }
+    }
+
     func refreshManagedInstallState() async {
         let managedURL = ParakeetLocalModelLayout.managedModelURL
         let result = await validator.validateASRModel(at: managedURL)
@@ -230,6 +261,10 @@ final class ModelStore {
         let postProcessingURL = Gemma4PostProcessingModelLayout.managedModelURL
         let postProcessingResult = await validator.validatePostProcessingModel(at: postProcessingURL)
         postProcessingInstallState = postProcessingResult.isValid ? .installed : .idle
+
+        let speakerVerifierURL = SpeakerVerifierRuntimeLayout.managedRuntimeURL
+        let speakerVerifierResult = await validator.validateSpeakerVerifierRuntime(at: speakerVerifierURL)
+        speakerVerifierRuntimeInstallState = speakerVerifierResult.isValid ? .installed : .idle
     }
 
     func clearASRSelection() {

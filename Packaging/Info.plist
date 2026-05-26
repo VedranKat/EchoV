@@ -20,6 +20,14 @@
 	<string>1.1.1</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>EchoVSpeakerVerifierFbankSHA256</key>
+	<string>024e5073b7cfedee84408dc68dd6bafa02808fc786e67f1314e9c918297f5a63</string>
+	<key>EchoVSpeakerVerifierManifestSHA256</key>
+	<string>aa9c68ad8ca9ad8426653160d941e1fbb601681ca107c77022c942ecd6eae6fc</string>
+	<key>EchoVSpeakerVerifierModelBaseURL</key>
+	<string>https://huggingface.co/vedk00/ecapa-voxceleb-speaker-embedding-onnx/resolve/main</string>
+	<key>EchoVSpeakerVerifierONNXSHA256</key>
+	<string>f46380bbaeddb929fb3a10ab63a4b1877a50e3d1e5fdd55a1b618d5651d3f64e</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>

@@ -77,7 +77,31 @@ struct VoiceGateSettingsView: View {
                         ) {
                             Toggle("", isOn: Bindable(container.settings).isVoiceGateSpeakerMatchEnabled)
                                 .labelsHidden()
-                                .disabled(container.speakerProfileStore.profile == nil || container.isVoiceProfileEnrollmentProcessing)
+                                .disabled(
+                                    container.speakerProfileStore.profile == nil
+                                        || !isSpeakerVerifierReady
+                                        || !isVoiceProfileCompatible
+                                        || container.isVoiceProfileEnrollmentProcessing
+                                )
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "cpu",
+                            title: "Speaker verifier model",
+                            subtitle: speakerVerifierSubtitle
+                        ) {
+                            HStack(spacing: 8) {
+                                StatusBadge(text: speakerVerifierStatus.text, tone: speakerVerifierStatus.tone)
+
+                                Button(speakerVerifierInstallButtonTitle) {
+                                    Task {
+                                        await container.installManagedSpeakerVerifierRuntime()
+                                    }
+                                }
+                                .disabled(container.modelStore.speakerVerifierRuntimeInstallState.isInstalling || isSpeakerVerifierReady)
+                            }
                         }
 
                         DividerLine()
@@ -99,6 +123,24 @@ struct VoiceGateSettingsView: View {
                                 }
                                 .disabled(container.settings.voiceGateVerifierToggleHotkey == nil)
                             }
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "slider.horizontal.3",
+                            title: "Verification mode",
+                            subtitle: container.settings.voiceGateSpeakerVerificationMode.subtitle
+                        ) {
+                            Picker("", selection: Bindable(container.settings).voiceGateSpeakerVerificationMode) {
+                                ForEach(VoiceGateSpeakerVerificationMode.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 210)
+                            .disabled(!container.settings.isVoiceGateSpeakerMatchEnabled)
                         }
 
                         DividerLine()
@@ -132,6 +174,7 @@ struct VoiceGateSettingsView: View {
                                 Button(enrollmentButtonTitle) {
                                     toggleEnrollment()
                                 }
+                                .disabled(!isSpeakerVerifierReady || container.isVoiceProfileEnrollmentProcessing)
 
                                 Button("Delete") {
                                     container.deleteVoiceProfile()
@@ -165,6 +208,9 @@ struct VoiceGateSettingsView: View {
         .settingsPageBackground()
         .onAppear {
             container.speakerProfileStore.refresh()
+            Task {
+                await container.modelStore.refreshManagedInstallState()
+            }
         }
         .sheet(isPresented: $isRecordingHotkey) {
             HotkeyRecorderSheet(
@@ -193,16 +239,79 @@ struct VoiceGateSettingsView: View {
     }
 
     private var speakerMatchSubtitle: String {
-        guard container.speakerProfileStore.profile != nil else {
+        guard isSpeakerVerifierReady else {
+            return "Install the speaker verifier before enabling My Voice Only."
+        }
+
+        guard let profile = container.speakerProfileStore.profile else {
             return "Record a voice profile before requiring speaker match."
+        }
+
+        guard profile.modelID == SpeakerVerifierRuntimeLayout.modelID else {
+            return "Re-enroll your voice profile for the ONNX verifier."
         }
 
         return "Check each Voice Gate utterance before sending it to Parakeet."
     }
 
+    private var isSpeakerVerifierReady: Bool {
+        container.modelStore.speakerVerifierRuntimeInstallState == .installed
+    }
+
+    private var isVoiceProfileCompatible: Bool {
+        container.speakerProfileStore.profile?.modelID == SpeakerVerifierRuntimeLayout.modelID
+    }
+
+    private var speakerVerifierSubtitle: String {
+        switch container.modelStore.speakerVerifierRuntimeInstallState {
+        case .idle:
+            "Downloads the portable ONNX ECAPA speaker model on demand."
+        case .installing(let detail):
+            detail
+        case .installed:
+            "\(SpeakerVerifierRuntimeLayout.displayName) is ready."
+        case .failed(let detail):
+            detail
+        }
+    }
+
+    private var speakerVerifierStatus: (text: String, tone: StatusBadge.Tone) {
+        switch container.modelStore.speakerVerifierRuntimeInstallState {
+        case .idle:
+            return ("Not installed", .warning)
+        case .installing:
+            return ("Installing", .active)
+        case .installed:
+            return ("Ready", .success)
+        case .failed:
+            return ("Failed", .danger)
+        }
+    }
+
+    private var speakerVerifierInstallButtonTitle: String {
+        switch container.modelStore.speakerVerifierRuntimeInstallState {
+        case .idle:
+            return "Install"
+        case .installing:
+            return "Installing..."
+        case .installed:
+            return "Installed"
+        case .failed:
+            return "Retry"
+        }
+    }
+
     private var voiceProfileSubtitle: String {
+        guard isSpeakerVerifierReady else {
+            return "Install the speaker verifier before recording a profile."
+        }
+
         guard let profile = container.speakerProfileStore.profile else {
             return "No local profile recorded."
+        }
+
+        guard profile.modelID == SpeakerVerifierRuntimeLayout.modelID else {
+            return "Recorded with an older verifier. Re-enroll before enabling My Voice Only."
         }
 
         return "Created \(profile.createdAt.formatted(date: .abbreviated, time: .shortened))."
@@ -217,9 +326,13 @@ struct VoiceGateSettingsView: View {
             return ("Creating", .active)
         }
 
-        return container.speakerProfileStore.profile == nil
-            ? ("Missing", .warning)
-            : ("Enrolled", .success)
+        guard let profile = container.speakerProfileStore.profile else {
+            return ("Missing", .warning)
+        }
+
+        return profile.modelID == SpeakerVerifierRuntimeLayout.modelID
+            ? ("Enrolled", .success)
+            : ("Re-enroll", .warning)
     }
 
     private var enrollmentButtonTitle: String {

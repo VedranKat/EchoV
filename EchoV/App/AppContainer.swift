@@ -34,6 +34,7 @@ final class AppContainer {
     private let hotkeyService: any HotkeyService
     private let voiceGateCapture: VoiceActivatedAudioCapture
     private let speakerVerificationService: any SpeakerVerificationService
+    private let voiceGateVerificationWindows: AudioWindowExtractor
     private let voiceProfileEnrollmentRecorder: any AudioRecorder
     private var hasStarted = false
     private var recordingTrigger: RecordingTrigger?
@@ -58,6 +59,7 @@ final class AppContainer {
         hotkeyService: any HotkeyService,
         voiceGateCapture: VoiceActivatedAudioCapture,
         speakerVerificationService: any SpeakerVerificationService,
+        voiceGateVerificationWindows: AudioWindowExtractor,
         voiceProfileEnrollmentRecorder: any AudioRecorder
     ) {
         self.appState = appState
@@ -75,6 +77,7 @@ final class AppContainer {
         self.hotkeyService = hotkeyService
         self.voiceGateCapture = voiceGateCapture
         self.speakerVerificationService = speakerVerificationService
+        self.voiceGateVerificationWindows = voiceGateVerificationWindows
         self.voiceProfileEnrollmentRecorder = voiceProfileEnrollmentRecorder
     }
 
@@ -132,7 +135,8 @@ final class AppContainer {
                 microphonePermission: microphonePermission,
                 selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
             ),
-            speakerVerificationService: SpeechBrainSpeakerVerificationService(),
+            speakerVerificationService: ONNXSpeakerVerificationService(),
+            voiceGateVerificationWindows: AudioWindowExtractor(),
             voiceProfileEnrollmentRecorder: AVFoundationAudioRecorder(
                 microphonePermission: microphonePermission,
                 minimumDuration: 3,
@@ -148,6 +152,10 @@ final class AppContainer {
         Task {
             await historyStore.load()
             await modelStore.restoreSelection()
+            if !SpeakerVerifierRuntimeLayout.isInstalled()
+                || speakerProfileStore.profile?.modelID != SpeakerVerifierRuntimeLayout.modelID {
+                settings.isVoiceGateSpeakerMatchEnabled = false
+            }
             configureASREngineFromSelectedModel()
             configurePostProcessingEngineFromSelectedModel()
         }
@@ -262,6 +270,13 @@ final class AppContainer {
             return
         }
 
+        guard SpeakerVerifierRuntimeLayout.isInstalled() else {
+            appState.lastError = .speakerVerificationFailed(details: "Install the speaker verifier before enrolling a voice profile.")
+            appState.lastDetail = "Speaker verifier is not installed."
+            appState.notifyStatusChanged()
+            return
+        }
+
         guard recordingTrigger == nil, appState.state.canStartRecording else {
             appState.lastError = .recordingFailed(details: "Stop the current recording before enrolling a voice profile.")
             return
@@ -338,6 +353,11 @@ final class AppContainer {
         appState.notifyStatusChanged()
     }
 
+    func installManagedSpeakerVerifierRuntime() async {
+        await modelStore.installManagedSpeakerVerifierRuntime()
+        appState.notifyStatusChanged()
+    }
+
     func refreshPermissions() {
         permissionState.refresh(
             microphonePermission: microphonePermission,
@@ -347,7 +367,17 @@ final class AppContainer {
     }
 
     func requestMicrophoneAccess() async {
-        _ = await microphonePermission.requestAccess()
+        switch microphonePermission.authorizationStatus() {
+        case .authorized:
+            break
+        case .notDetermined:
+            _ = await microphonePermission.requestAccess()
+        case .denied, .restricted:
+            microphonePermission.openPrivacySettings()
+        @unknown default:
+            microphonePermission.openPrivacySettings()
+        }
+
         refreshPermissions()
     }
 
@@ -411,6 +441,20 @@ final class AppContainer {
         guard speakerProfileStore.profile != nil else {
             appState.lastError = .speakerVerificationFailed(details: "Record a voice profile before enabling My Voice Only.")
             appState.lastDetail = "Voice profile is missing."
+            appState.notifyStatusChanged()
+            return
+        }
+
+        guard speakerProfileStore.profile?.modelID == SpeakerVerifierRuntimeLayout.modelID else {
+            appState.lastError = .speakerVerificationFailed(details: "Re-enroll your voice profile before enabling My Voice Only.")
+            appState.lastDetail = "Voice profile needs to be re-enrolled."
+            appState.notifyStatusChanged()
+            return
+        }
+
+        guard SpeakerVerifierRuntimeLayout.isInstalled() else {
+            appState.lastError = .speakerVerificationFailed(details: "Install the speaker verifier before enabling My Voice Only.")
+            appState.lastDetail = "Speaker verifier is not installed."
             appState.notifyStatusChanged()
             return
         }
@@ -766,10 +810,29 @@ final class AppContainer {
         }
 
         recordingTrigger = .pushToTalk
+
+        switch await prepareMicrophoneForPushToTalk() {
+        case .ready:
+            break
+        case .retryNeeded:
+            if recordingTrigger == .pushToTalk {
+                recordingTrigger = nil
+            }
+            return
+        case .failed:
+            return
+        }
+
         await pipeline.startRecording()
 
-        if !appState.state.isRecording {
+        guard appState.state.isRecording else {
             recordingTrigger = nil
+            return
+        }
+
+        guard recordingTrigger == .pushToTalk else {
+            await pipeline.stopTranscribeAndInsert()
+            return
         }
     }
 
@@ -800,6 +863,48 @@ final class AppContainer {
         isVoiceGateArmed = true
         recordingTrigger = .voiceGate
         await startVoiceGateListening()
+    }
+
+    private enum PushToTalkMicrophonePreparation {
+        case ready
+        case retryNeeded
+        case failed
+    }
+
+    private func prepareMicrophoneForPushToTalk() async -> PushToTalkMicrophonePreparation {
+        switch microphonePermission.authorizationStatus() {
+        case .authorized:
+            return .ready
+        case .notDetermined:
+            let granted = await microphonePermission.requestAccess()
+            refreshPermissions()
+
+            guard granted else {
+                failMicrophonePermission()
+                recordingTrigger = nil
+                return .failed
+            }
+
+            appState.lastError = nil
+            appState.lastDetail = "Microphone access granted. Hold push-to-talk again to record."
+            setState(.cancelled)
+            return .retryNeeded
+        case .denied, .restricted:
+            refreshPermissions()
+            failMicrophonePermission()
+            recordingTrigger = nil
+            return .failed
+        @unknown default:
+            refreshPermissions()
+            failMicrophonePermission()
+            recordingTrigger = nil
+            return .failed
+        }
+    }
+
+    private func failMicrophonePermission() {
+        appState.lastError = .microphonePermissionDenied
+        setState(.failed(.microphonePermissionDenied))
     }
 
     private func startVoiceGateListening() async {
@@ -909,23 +1014,60 @@ final class AppContainer {
         }
 
         let threshold = settings.voiceGateSpeakerMatchStrictness.minimumSimilarity
-        appState.lastDetail = "Checking voice match..."
+        let mode = settings.voiceGateSpeakerVerificationMode
+        appState.lastDetail = mode == .continuous ? "Checking voice across the command..." : "Checking voice at the start..."
         setState(.transcribing(status: "Checking voice..."))
 
-        let result = try await speakerVerificationService.score(
-            audioURL: recordedAudio.fileURL,
-            profile: profile,
-            threshold: threshold
-        )
-
-        guard result.isMatch else {
-            appState.lastDetail = "Different voice ignored."
-            setState(.cancelled)
-            return false
+        let windows = try verificationWindows(for: recordedAudio, mode: mode)
+        defer {
+            temporaryAudioStore.delete(windows.map(\.fileURL))
         }
 
-        appState.lastDetail = String(format: "Voice matched %.0f%%. Transcribing...", result.similarity * 100)
+        guard !windows.isEmpty else {
+            throw AppError.speakerVerificationFailed(details: "Voice Gate did not create audio windows for speaker verification.")
+        }
+
+        var acceptedSimilarities: [Double] = []
+        for (index, window) in windows.enumerated() {
+            if windows.count > 1 {
+                appState.lastDetail = "Checking voice window \(index + 1) of \(windows.count)..."
+                setState(.transcribing(status: "Checking voice \(index + 1)/\(windows.count)..."))
+            }
+
+            let result = try await speakerVerificationService.score(
+                audioURL: window.fileURL,
+                profile: profile,
+                threshold: threshold
+            )
+
+            guard result.isMatch else {
+                appState.lastDetail = mode == .continuous
+                    ? "Voice changed or overlapped. Command ignored."
+                    : "Different voice ignored."
+                setState(.cancelled)
+                return false
+            }
+
+            acceptedSimilarities.append(result.similarity)
+        }
+
+        let minimumSimilarity = acceptedSimilarities.min() ?? 0
+        appState.lastDetail = mode == .continuous
+            ? String(format: "Voice matched across command %.0f%% minimum. Transcribing...", minimumSimilarity * 100)
+            : String(format: "Voice matched %.0f%%. Transcribing...", minimumSimilarity * 100)
         return true
+    }
+
+    private func verificationWindows(
+        for recordedAudio: RecordedAudio,
+        mode: VoiceGateSpeakerVerificationMode
+    ) throws -> [AudioWindow] {
+        switch mode {
+        case .startOnly:
+            return try voiceGateVerificationWindows.extractLeadingWindow(from: recordedAudio.fileURL)
+        case .continuous:
+            return try voiceGateVerificationWindows.extractOverlappingWindows(from: recordedAudio.fileURL)
+        }
     }
 
     private func disarmVoiceGate() {

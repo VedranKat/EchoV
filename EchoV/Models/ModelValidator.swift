@@ -4,6 +4,7 @@ protocol ModelValidator: Sendable {
     func validateASRModel(at url: URL) async -> ModelValidationResult
     func validateLlamaRuntime(at url: URL) async -> ModelValidationResult
     func validatePostProcessingModel(at url: URL) async -> ModelValidationResult
+    func validateSpeakerVerifierRuntime(at url: URL) async -> ModelValidationResult
 }
 
 struct ModelValidationResult: Equatable, Sendable {
@@ -17,6 +18,22 @@ struct ModelValidationResult: Equatable, Sendable {
 }
 
 struct ParakeetModelValidator: ModelValidator {
+    func validateSpeakerVerifierRuntime(at url: URL) async -> ModelValidationResult {
+        guard SpeakerVerifierRuntimeLayout.isDirectory(url) else {
+            return ModelValidationResult(isValid: false, message: "Selected path is not a folder.")
+        }
+
+        let missing = SpeakerVerifierRuntimeLayout.missingFiles(at: url)
+        guard missing.isEmpty else {
+            return ModelValidationResult(isValid: false, message: "Missing: \(missing.joined(separator: ", "))")
+        }
+
+        return ModelValidationResult(
+            isValid: true,
+            message: "Speaker verifier model is ready."
+        )
+    }
+
     func validateLlamaRuntime(at url: URL) async -> ModelValidationResult {
         guard LlamaRuntimeLayout.isDirectory(url) else {
             return ModelValidationResult(isValid: false, message: "Selected path is not a folder.")

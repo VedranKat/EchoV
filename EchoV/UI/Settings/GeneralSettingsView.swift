@@ -88,10 +88,11 @@ struct GeneralSettingsView: View {
                         ) {
                             HStack(spacing: 8) {
                                 StatusBadge(text: microphoneStatus.text, tone: microphoneStatus.tone)
-                                Button("Request") {
+                                Button(microphonePermissionActionTitle) {
                                     requestMicrophoneAccess()
                                 }
-                                .disabled(container.permissionState.microphoneAuthorizationStatus == .authorized)
+                                .disabled(isMicrophonePermissionActionDisabled)
+                                .help(microphonePermissionActionHelp)
                             }
                         }
 
@@ -275,11 +276,41 @@ struct GeneralSettingsView: View {
         case .authorized:
             "Ready to capture dictation audio."
         case .denied, .restricted:
-            "Enable access in System Settings to record."
+            "Enable access in System Settings > Privacy & Security > Microphone."
         case .notDetermined:
             "Permission has not been requested yet."
         @unknown default:
             "Permission status is unavailable."
+        }
+    }
+
+    private var microphonePermissionActionTitle: String {
+        switch container.permissionState.microphoneAuthorizationStatus {
+        case .authorized:
+            "Allowed"
+        case .denied, .restricted:
+            "Open"
+        case .notDetermined:
+            "Request"
+        @unknown default:
+            "Open"
+        }
+    }
+
+    private var isMicrophonePermissionActionDisabled: Bool {
+        container.permissionState.microphoneAuthorizationStatus == .authorized
+    }
+
+    private var microphonePermissionActionHelp: String {
+        switch container.permissionState.microphoneAuthorizationStatus {
+        case .authorized:
+            "Microphone access is allowed."
+        case .denied, .restricted:
+            "Open System Settings to enable microphone access."
+        case .notDetermined:
+            "Ask macOS for microphone access."
+        @unknown default:
+            "Open System Settings to review microphone access."
         }
     }
 
