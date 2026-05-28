@@ -1,10 +1,64 @@
 import Foundation
 
-enum WakePhraseMatcher {
-    static let activationPhrase = "computer"
+enum VoiceModeActivationCommand: Equatable, Sendable {
+    case spoken
+    case textResponse
+    case continueTextResponse
+    case cleanUpSelection
 
-    static func isActivationPhrase(_ text: String) -> Bool {
-        normalizedTokens(in: text) == [activationPhrase]
+    var phrase: String {
+        switch self {
+        case .spoken:
+            return "computer"
+        case .textResponse:
+            return "slate"
+        case .continueTextResponse:
+            return "continue"
+        case .cleanUpSelection:
+            return "prime cleanup"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .cleanUpSelection:
+            return "Prime Cleanup"
+        case .spoken, .textResponse, .continueTextResponse:
+            return phrase.capitalized
+        }
+    }
+
+    var delivery: VoiceModeResponseDelivery {
+        switch self {
+        case .spoken:
+            return .spoken
+        case .textResponse, .continueTextResponse, .cleanUpSelection:
+            return .textResponse
+        }
+    }
+}
+
+enum WakePhraseMatcher {
+    static let spokenActivationPhrase = "computer"
+    static let textResponseActivationPhrase = "slate"
+    static let continueTextResponseActivationPhrase = "continue"
+    static let cleanUpSelectionActivationPhrase = ["prime", "cleanup"]
+    static let cleanUpSelectionSplitActivationPhrase = ["prime", "clean", "up"]
+
+    static func activationCommand(for text: String) -> VoiceModeActivationCommand? {
+        switch normalizedTokens(in: text) {
+        case [spokenActivationPhrase]:
+            return .spoken
+        case [textResponseActivationPhrase]:
+            return .textResponse
+        case [continueTextResponseActivationPhrase]:
+            return .continueTextResponse
+        case cleanUpSelectionActivationPhrase,
+             cleanUpSelectionSplitActivationPhrase:
+            return .cleanUpSelection
+        default:
+            return nil
+        }
     }
 
     private static func normalizedTokens(in text: String) -> [String] {

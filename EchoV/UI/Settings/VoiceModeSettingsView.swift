@@ -2,14 +2,15 @@ import SwiftUI
 
 struct VoiceModeSettingsView: View {
     @Environment(AppContainer.self) private var container
-    @State private var isRecordingHotkey = false
+    @State private var isRecordingVoiceHotkey = false
+    @State private var isRecordingTextHotkey = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
                     title: "Voice Mode",
-                    subtitle: "Respond locally after Computer, your request, and a pause."
+                    subtitle: "Say Computer for spoken answers, Slate for text-response sessions, Continue to follow up, or Prime cleanup for selected text."
                 )
 
                 SettingsCard("Activation", subtitle: "Keep Voice Mode explicit and local.") {
@@ -33,30 +34,69 @@ struct VoiceModeSettingsView: View {
 
                         SettingsRow(
                             icon: "text.quote",
-                            title: "Activation phrase",
-                            subtitle: "Requires the isolated word."
+                            title: "Voice commands",
+                            subtitle: "Computer speaks, Slate starts text, Continue appends, Prime cleanup rewrites selected text with Prime."
                         ) {
-                            StatusBadge(text: "Computer", tone: .active)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 8) {
+                                    StatusBadge(text: "Computer", tone: .active)
+                                    StatusBadge(text: "Slate", tone: .success)
+                                    StatusBadge(text: "Continue", tone: .neutral)
+                                    StatusBadge(text: "Prime cleanup", tone: .warning)
+                                }
+
+                                VStack(alignment: .trailing, spacing: 6) {
+                                    HStack(spacing: 8) {
+                                        StatusBadge(text: "Computer", tone: .active)
+                                        StatusBadge(text: "Slate", tone: .success)
+                                    }
+                                    HStack(spacing: 8) {
+                                        StatusBadge(text: "Continue", tone: .neutral)
+                                        StatusBadge(text: "Prime cleanup", tone: .warning)
+                                    }
+                                }
+                            }
                         }
 
                         DividerLine()
 
                         SettingsRow(
                             icon: "keyboard.badge.ellipsis",
-                            title: "Manual activation",
-                            subtitle: "Start listening for a request without the activation phrase."
+                            title: "Manual voice activation",
+                            subtitle: "Start spoken-answer listening without saying Computer."
                         ) {
                             HStack(spacing: 8) {
                                 KeyboardShortcutChip(text: container.settings.voiceModeActivationHotkey?.displayName ?? "Not set")
 
                                 Button("Change") {
-                                    isRecordingHotkey = true
+                                    isRecordingVoiceHotkey = true
                                 }
 
                                 Button("Clear") {
                                     container.setVoiceModeActivationHotkey(nil)
                                 }
                                 .disabled(container.settings.voiceModeActivationHotkey == nil)
+                            }
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "keyboard.badge.ellipsis",
+                            title: "Manual text activation",
+                            subtitle: "Start text-response listening without saying Slate."
+                        ) {
+                            HStack(spacing: 8) {
+                                KeyboardShortcutChip(text: container.settings.voiceModeTextActivationHotkey?.displayName ?? "Not set")
+
+                                Button("Change") {
+                                    isRecordingTextHotkey = true
+                                }
+
+                                Button("Clear") {
+                                    container.setVoiceModeTextActivationHotkey(nil)
+                                }
+                                .disabled(container.settings.voiceModeTextActivationHotkey == nil)
                             }
                         }
                     }
@@ -66,21 +106,52 @@ struct VoiceModeSettingsView: View {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "timer",
-                            title: "Respond after pause",
-                            subtitle: String(format: "Send the request after %.1fs of silence.", container.settings.voiceModeResponsePauseSeconds)
+                            title: "Prompt ending",
+                            subtitle: container.settings.voiceModePromptEndingMode.subtitle
                         ) {
-                            HStack(spacing: 10) {
-                                Slider(
-                                    value: Bindable(container.settings).voiceModeResponsePauseSeconds,
-                                    in: 0.5...3.0,
-                                    step: 0.1
-                                )
-                                .frame(width: 190)
-
-                                Text(String(format: "%.1fs", container.settings.voiceModeResponsePauseSeconds))
-                                    .font(.system(.callout, design: .monospaced).weight(.semibold))
-                                    .frame(width: 42, alignment: .trailing)
+                            Picker(
+                                "",
+                                selection: Bindable(container.settings).voiceModePromptEndingMode
+                            ) {
+                                ForEach(VoiceModePromptEndingMode.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
                             }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 280)
+                        }
+
+                        DividerLine()
+
+                        promptEndingControls
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "rectangle.and.pencil.and.ellipsis",
+                            title: "Preview before sending",
+                            subtitle: "Review, edit, or cancel the prompt before the LLM sees it."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).isVoiceModePromptPreviewEnabled)
+                                .labelsHidden()
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "rectangle.inset.filled.and.person.filled",
+                            title: "Status HUD",
+                            subtitle: "Show a compact floating Voice Mode status panel."
+                        ) {
+                            Toggle(
+                                "",
+                                isOn: Binding(
+                                    get: { container.settings.isVoiceModeHUDEnabled },
+                                    set: { container.setVoiceModeHUDEnabled($0) }
+                                )
+                            )
+                            .labelsHidden()
                         }
 
                         DividerLine()
@@ -90,43 +161,29 @@ struct VoiceModeSettingsView: View {
                             title: "Response backend",
                             subtitle: container.settings.voiceModeResponseBackend.subtitle
                         ) {
-                            Picker(
-                                "",
-                                selection: Binding(
-                                    get: { container.settings.voiceModeResponseBackend },
-                                    set: { container.setVoiceModeResponseBackend($0) }
-                                )
-                            ) {
-                                ForEach(VoiceModeResponseBackend.allCases) { backend in
-                                    Text(backend.title).tag(backend)
+                            HStack(spacing: 10) {
+                                Picker(
+                                    "",
+                                    selection: Binding(
+                                        get: { container.settings.voiceModeResponseBackend },
+                                        set: { container.setVoiceModeResponseBackend($0) }
+                                    )
+                                ) {
+                                    ForEach(VoiceModeResponseBackend.allCases) { backend in
+                                        Text(backend.title).tag(backend)
+                                    }
                                 }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.segmented)
-                            .frame(width: 320)
-                        }
+                                .labelsHidden()
+                                .pickerStyle(.segmented)
+                                .frame(width: 320)
 
-                        DividerLine()
-
-                        SettingsRow(
-                            icon: "bubble.left.and.text.bubble.right",
-                            title: "Delivery",
-                            subtitle: container.settings.voiceModeResponseDelivery.subtitle
-                        ) {
-                            Picker(
-                                "",
-                                selection: Binding(
-                                    get: { container.settings.voiceModeResponseDelivery },
-                                    set: { container.setVoiceModeResponseDelivery($0) }
+                                let backend = container.voiceModeBackendIndicator()
+                                VoiceModeBackendIndicator(
+                                    title: backend.title,
+                                    subtitle: backend.subtitle,
+                                    isCloud: backend.isCloud
                                 )
-                            ) {
-                                ForEach(VoiceModeResponseDelivery.allCases) { delivery in
-                                    Text(delivery.title).tag(delivery)
-                                }
                             }
-                            .labelsHidden()
-                            .pickerStyle(.segmented)
-                            .frame(width: 180)
                         }
                     }
                 }
@@ -180,81 +237,77 @@ struct VoiceModeSettingsView: View {
                     }
                 }
 
-                if container.settings.voiceModeResponseDelivery == .textResponse {
-                    SettingsCard("Text Response", subtitle: "Notification replies stay final-only; chat follow-ups can stream.") {
-                        VStack(spacing: 12) {
-                            SettingsRow(
-                                icon: "dot.radiowaves.left.and.right",
-                                title: "Stream chat replies",
-                                subtitle: "Show follow-up answers while they generate."
-                            ) {
-                                Toggle("", isOn: Bindable(container.settings).textResponseStreamsReplies)
-                                    .labelsHidden()
-                            }
+                SettingsCard("Text Response", subtitle: "Slate notifications stay final-only; chat follow-ups can stream.") {
+                    VStack(spacing: 12) {
+                        SettingsRow(
+                            icon: "dot.radiowaves.left.and.right",
+                            title: "Stream chat replies",
+                            subtitle: "Show follow-up answers while they generate."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).textResponseStreamsReplies)
+                                .labelsHidden()
+                        }
 
-                            DividerLine()
+                        DividerLine()
 
-                            SettingsRow(
-                                icon: "brain",
-                                title: "Show reasoning",
-                                subtitle: "Only inside chat follow-ups; never in notifications or spoken replies."
-                            ) {
-                                Toggle("", isOn: Bindable(container.settings).textResponseShowsReasoning)
-                                    .labelsHidden()
-                            }
+                        SettingsRow(
+                            icon: "brain",
+                            title: "Show reasoning",
+                            subtitle: "Only inside chat follow-ups; never in notifications or spoken replies."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).textResponseShowsReasoning)
+                                .labelsHidden()
                         }
                     }
                 }
 
-                if container.settings.voiceModeResponseDelivery == .spoken {
-                    SettingsCard("Kokoro", subtitle: "Use Kokoro CoreML for Voice Mode responses.") {
-                        VStack(spacing: 12) {
-                            SettingsRow(
-                                icon: "cpu",
-                                title: "Engine",
-                                subtitle: "CoreML speech synthesis on this Mac."
-                            ) {
-                                StatusBadge(text: "Kokoro", tone: .success)
-                            }
+                SettingsCard("Kokoro", subtitle: "Computer uses Kokoro CoreML for spoken responses.") {
+                    VStack(spacing: 12) {
+                        SettingsRow(
+                            icon: "cpu",
+                            title: "Engine",
+                            subtitle: "CoreML speech synthesis on this Mac."
+                        ) {
+                            StatusBadge(text: "Kokoro", tone: .success)
+                        }
 
-                            DividerLine()
+                        DividerLine()
 
-                            SettingsRow(
-                                icon: "person.wave.2",
-                                title: "Voice",
-                                subtitle: selectedVoiceSubtitle
+                        SettingsRow(
+                            icon: "person.wave.2",
+                            title: "Voice",
+                            subtitle: selectedVoiceSubtitle
+                        ) {
+                            Picker(
+                                "Voice",
+                                selection: Bindable(container.settings).voiceModeKokoroVoiceIdentifier
                             ) {
-                                Picker(
-                                    "Voice",
-                                    selection: Bindable(container.settings).voiceModeKokoroVoiceIdentifier
-                                ) {
-                                    ForEach(container.availableSpeechVoices()) { voice in
-                                        Text(voice.displayName).tag(voice.id)
-                                    }
+                                ForEach(container.availableSpeechVoices()) { voice in
+                                    Text(voice.displayName).tag(voice.id)
                                 }
-                                .labelsHidden()
-                                .frame(width: 260)
                             }
+                            .labelsHidden()
+                            .frame(width: 260)
+                        }
 
-                            DividerLine()
+                        DividerLine()
 
-                            SettingsRow(
-                                icon: "gauge.with.dots.needle.bottom.50percent",
-                                title: "Speed",
-                                subtitle: String(format: "Speak at %.2fx.", container.settings.voiceModeKokoroSpeed)
-                            ) {
-                                HStack(spacing: 10) {
-                                    Slider(
-                                        value: Bindable(container.settings).voiceModeKokoroSpeed,
-                                        in: 0.5...2.0,
-                                        step: 0.05
-                                    )
-                                    .frame(width: 190)
+                        SettingsRow(
+                            icon: "gauge.with.dots.needle.bottom.50percent",
+                            title: "Speed",
+                            subtitle: String(format: "Speak at %.2fx.", container.settings.voiceModeKokoroSpeed)
+                        ) {
+                            HStack(spacing: 10) {
+                                Slider(
+                                    value: Bindable(container.settings).voiceModeKokoroSpeed,
+                                    in: 0.5...2.0,
+                                    step: 0.05
+                                )
+                                .frame(width: 190)
 
-                                    Text(String(format: "%.2fx", container.settings.voiceModeKokoroSpeed))
-                                        .font(.system(.callout, design: .monospaced).weight(.semibold))
-                                        .frame(width: 52, alignment: .trailing)
-                                }
+                                Text(String(format: "%.2fx", container.settings.voiceModeKokoroSpeed))
+                                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                                    .frame(width: 52, alignment: .trailing)
                             }
                         }
                     }
@@ -263,15 +316,27 @@ struct VoiceModeSettingsView: View {
             .padding(24)
         }
         .settingsPageBackground()
-        .sheet(isPresented: $isRecordingHotkey) {
+        .sheet(isPresented: $isRecordingVoiceHotkey) {
             HotkeyRecorderSheet(
-                title: "Set Voice Mode",
+                title: "Set Voice Mode Voice",
                 onCancel: {
-                    isRecordingHotkey = false
+                    isRecordingVoiceHotkey = false
                 },
                 onCapture: { binding in
                     container.setVoiceModeActivationHotkey(binding)
-                    isRecordingHotkey = false
+                    isRecordingVoiceHotkey = false
+                }
+            )
+        }
+        .sheet(isPresented: $isRecordingTextHotkey) {
+            HotkeyRecorderSheet(
+                title: "Set Voice Mode Text",
+                onCancel: {
+                    isRecordingTextHotkey = false
+                },
+                onCapture: { binding in
+                    container.setVoiceModeTextActivationHotkey(binding)
+                    isRecordingTextHotkey = false
                 }
             )
         }
@@ -279,10 +344,170 @@ struct VoiceModeSettingsView: View {
 
     private var voiceModeSubtitle: String {
         if container.settings.isVoiceModeEnabled {
-            return "Listening for Computer while EchoV is running."
+            return "Listening for Computer, Slate, Continue, or Prime cleanup while EchoV is running."
         }
 
         return "Voice Mode starts only when this is enabled."
+    }
+
+    @ViewBuilder
+    private var promptEndingControls: some View {
+        switch container.settings.voiceModePromptEndingMode {
+        case .fixedPause:
+            SettingsRow(
+                icon: "pause.circle",
+                title: "Fixed pause",
+                subtitle: String(format: "Send after %.1fs of silence.", container.settings.voiceModeResponsePauseSeconds)
+            ) {
+                secondsSlider(
+                    value: Bindable(container.settings).voiceModeResponsePauseSeconds,
+                    range: 0.5...3.0,
+                    step: 0.1,
+                    width: 42,
+                    format: "%.1fs"
+                )
+            }
+
+        case .adaptivePause:
+            VStack(spacing: 12) {
+                SettingsRow(
+                    icon: "slider.horizontal.3",
+                    title: "Preset",
+                    subtitle: adaptivePresetSubtitle
+                ) {
+                    Picker(
+                        "",
+                        selection: Bindable(container.settings).voiceModeAdaptivePausePreset
+                    ) {
+                        ForEach(VoiceModeAdaptivePausePreset.allCases) { preset in
+                            Text(preset.title).tag(preset)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 320)
+                }
+
+                if container.settings.voiceModeAdaptivePausePreset == .custom {
+                    DividerLine()
+
+                    SettingsRow(
+                        icon: "pause.circle",
+                        title: "Initial pause",
+                        subtitle: String(format: "Use %.1fs while the request is starting.", container.settings.voiceModeResponsePauseSeconds)
+                    ) {
+                        secondsSlider(
+                            value: Bindable(container.settings).voiceModeResponsePauseSeconds,
+                            range: 0.5...3.0,
+                            step: 0.1,
+                            width: 42,
+                            format: "%.1fs"
+                        )
+                    }
+
+                    DividerLine()
+
+                    SettingsRow(
+                        icon: "forward.circle",
+                        title: "Fast pause",
+                        subtitle: String(format: "Use %.1fs after speech is established.", container.settings.voiceModeAdaptiveFastPauseSeconds)
+                    ) {
+                        secondsSlider(
+                            value: Bindable(container.settings).voiceModeAdaptiveFastPauseSeconds,
+                            range: 0.4...1.2,
+                            step: 0.1,
+                            width: 42,
+                            format: "%.1fs"
+                        )
+                    }
+
+                    DividerLine()
+
+                    SettingsRow(
+                        icon: "waveform",
+                        title: "Fast pause after",
+                        subtitle: String(format: "Switch after %.1fs of speech.", container.settings.voiceModeAdaptiveMinimumSpeechSeconds)
+                    ) {
+                        secondsSlider(
+                            value: Bindable(container.settings).voiceModeAdaptiveMinimumSpeechSeconds,
+                            range: 0.5...3.0,
+                            step: 0.1,
+                            width: 42,
+                            format: "%.1fs"
+                        )
+                    }
+                }
+            }
+
+        case .stopPhrase:
+            VStack(spacing: 12) {
+                SettingsRow(
+                    icon: "text.badge.checkmark",
+                    title: "Stop phrase",
+                    subtitle: "Final phrase is removed after transcription."
+                ) {
+                    HStack(spacing: 8) {
+                        TextField("go ahead", text: Bindable(container.settings).voiceModeStopPhrase)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 220)
+
+                        StopPhraseInfoButton(isSingleWord: isStopPhraseSingleWord)
+                    }
+                }
+
+                DividerLine()
+
+                SettingsRow(
+                    icon: "pause.circle",
+                    title: "Fallback pause",
+                    subtitle: String(format: "Capture still ends after %.1fs of silence.", container.settings.voiceModeResponsePauseSeconds)
+                ) {
+                    secondsSlider(
+                        value: Bindable(container.settings).voiceModeResponsePauseSeconds,
+                        range: 0.5...3.0,
+                        step: 0.1,
+                        width: 42,
+                        format: "%.1fs"
+                    )
+                }
+            }
+        }
+    }
+
+    private func secondsSlider(
+        value: Binding<TimeInterval>,
+        range: ClosedRange<TimeInterval>,
+        step: TimeInterval,
+        width: CGFloat,
+        format: String
+    ) -> some View {
+        HStack(spacing: 10) {
+            Slider(value: value, in: range, step: step)
+                .frame(width: 190)
+
+            Text(String(format: format, value.wrappedValue))
+                .font(.system(.callout, design: .monospaced).weight(.semibold))
+                .frame(width: width, alignment: .trailing)
+        }
+    }
+
+    private var adaptivePresetSubtitle: String {
+        guard let timing = container.settings.voiceModeAdaptivePausePreset.timing else {
+            return "Use custom adaptive pause timings."
+        }
+
+        return String(
+            format: "Initial %.1fs, fast %.2fs after %.1fs.",
+            timing.initialPauseSeconds,
+            timing.fastPauseSeconds,
+            timing.minimumSpeechSeconds
+        )
+    }
+
+    private var isStopPhraseSingleWord: Bool {
+        container.settings.voiceModeStopPhrase
+            .split(whereSeparator: \.isWhitespace)
+            .count == 1
     }
 
     private var selectedVoiceSubtitle: String {
@@ -290,4 +515,49 @@ struct VoiceModeSettingsView: View {
             ?? "The selected Kokoro voice is not currently available."
     }
 
+}
+
+private struct StopPhraseInfoButton: View {
+    let isSingleWord: Bool
+
+    @State private var isShowingHelp = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button {
+            isShowingHelp.toggle()
+        } label: {
+            Image(systemName: "info.circle")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(isSingleWord ? .orange : .secondary)
+        .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .help("Stop phrase safety")
+        .onHover { isHovering in
+            isShowingHelp = isHovering
+        }
+        .popover(isPresented: $isShowingHelp, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Stop Phrase Safety")
+                    .font(.headline)
+                Text(helpMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(width: 320, alignment: .leading)
+        }
+    }
+
+    private var helpMessage: String {
+        if isSingleWord {
+            return "One-word stop phrases are easier to strip accidentally. Two-word command-like phrases are safer. The phrase is removed after transcription, not as an instant recording interrupt."
+        }
+
+        return "Two-word command-like phrases are safer than normal words. The phrase is removed after transcription, not as an instant recording interrupt."
+    }
 }

@@ -41,6 +41,18 @@ struct HotkeyBinding: Codable, Equatable, Sendable {
         displayName: "Control + 3"
     )
 
+    static let defaultVoiceModeTextActivation = HotkeyBinding(
+        keyCode: 21,
+        modifiers: [.control],
+        displayName: "Control + 4"
+    )
+
+    static let defaultStop = HotkeyBinding(
+        keyCode: 23,
+        modifiers: [.control],
+        displayName: "Control + 5"
+    )
+
     static let legacyDefaultToggle = HotkeyBinding(
         keyCode: 49,
         modifiers: [.option],

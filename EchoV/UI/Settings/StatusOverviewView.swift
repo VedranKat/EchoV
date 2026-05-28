@@ -56,6 +56,20 @@ struct StatusOverviewView: View {
                     }
                 }
 
+                if !recentRejectedWakeTranscripts.isEmpty {
+                    SettingsCard("Ignored Voice Commands", subtitle: "Recent wake phrases that EchoV did not treat as commands.") {
+                        VStack(spacing: 10) {
+                            ForEach(Array(recentRejectedWakeTranscripts.enumerated()), id: \.element.id) { index, transcript in
+                                rejectedWakeTranscriptRow(transcript)
+
+                                if index < recentRejectedWakeTranscripts.count - 1 {
+                                    DividerLine()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 HStack(alignment: .top, spacing: 14) {
                     SettingsCard("Permissions", subtitle: "Required access for hands-free insertion.") {
                         VStack(spacing: 12) {
@@ -137,6 +151,67 @@ struct StatusOverviewView: View {
         }
     }
 
+    private func rejectedWakeTranscriptRow(_ transcript: VoiceModeRejectedWakeTranscript) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: rejectedWakeIcon(for: transcript.reason))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rejectedWakeTitle(for: transcript))
+                    .font(.body)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .textSelection(.enabled)
+
+                Text(rejectedWakeSubtitle(for: transcript.reason))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            Text(transcript.createdAt, style: .time)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .frame(minHeight: 36)
+    }
+
+    private var recentRejectedWakeTranscripts: [VoiceModeRejectedWakeTranscript] {
+        Array(container.appState.rejectedWakeTranscripts.prefix(5))
+    }
+
+    private func rejectedWakeTitle(for transcript: VoiceModeRejectedWakeTranscript) -> String {
+        let text = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            return "Wake phrase was too long"
+        }
+
+        return text
+    }
+
+    private func rejectedWakeSubtitle(for reason: VoiceModeRejectedWakeTranscript.Reason) -> String {
+        switch reason {
+        case .notExactActivationCommand:
+            return "Commands must be exactly Computer, Slate, Continue, or Prime cleanup."
+        case .durationExceeded:
+            return "Wake command audio exceeded the short command window."
+        }
+    }
+
+    private func rejectedWakeIcon(for reason: VoiceModeRejectedWakeTranscript.Reason) -> String {
+        switch reason {
+        case .notExactActivationCommand:
+            return "quote.bubble"
+        case .durationExceeded:
+            return "timer"
+        }
+    }
+
     private var statusTitle: String {
         switch container.appState.state {
         case .idle:
@@ -194,11 +269,11 @@ struct StatusOverviewView: View {
         case .voiceGateRecording:
             "Speech detected. EchoV will transcribe after the configured silence timeout."
         case .voiceModeWakeListening:
-            "Voice Mode is listening for Computer."
+            "Voice Mode is listening for Computer, Slate, Continue, or Prime cleanup."
         case .voiceModeCheckingWakePhrase:
-            "Checking whether the last phrase was Computer."
+            "Checking whether the last phrase was Computer, Slate, Continue, or Prime cleanup."
         case .voiceModePromptListening:
-            "Computer detected. Say your request."
+            "Activation command detected. Say your request."
         case .voiceModePromptRecording:
             "Listening for the end of your request."
         case .voiceModeThinking:

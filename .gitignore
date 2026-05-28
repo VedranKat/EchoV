@@ -2,6 +2,7 @@
 .build-fluid/
 .build-app/
 .build-test/
+.build-deps/
 .swiftpm/
 DerivedData/
 dist/

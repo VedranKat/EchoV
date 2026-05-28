@@ -9,7 +9,7 @@ APP_DIR="$ROOT_DIR/dist/EchoV.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-SPEAKER_VERIFIER_ORT_DIR="${SPEAKER_VERIFIER_ORT_DIR:-"/private/tmp/echov-speaker-verifier/onnxruntime/onnxruntime-osx-arm64-1.19.2"}"
+SPEAKER_VERIFIER_ORT_DIR="${SPEAKER_VERIFIER_ORT_DIR:-"$ROOT_DIR/.build-deps/onnxruntime/onnxruntime-osx-arm64-1.19.2"}"
 SPEAKER_VERIFIER_SUPPORT_DIR="$RESOURCES_DIR/SpeakerVerifierRuntime"
 
 cd "$ROOT_DIR"

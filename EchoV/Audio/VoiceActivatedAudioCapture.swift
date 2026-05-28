@@ -3,8 +3,36 @@ import AVFoundation
 import Foundation
 
 struct VoiceGateCaptureConfiguration {
-    let silenceTimeoutSeconds: TimeInterval
+    let silenceTimeout: VoiceGateCaptureSilenceTimeout
     let sensitivity: VoiceGateSensitivity
+
+    init(silenceTimeoutSeconds: TimeInterval, sensitivity: VoiceGateSensitivity) {
+        self.silenceTimeout = .fixed(seconds: silenceTimeoutSeconds)
+        self.sensitivity = sensitivity
+    }
+
+    init(silenceTimeout: VoiceGateCaptureSilenceTimeout, sensitivity: VoiceGateSensitivity) {
+        self.silenceTimeout = silenceTimeout
+        self.sensitivity = sensitivity
+    }
+}
+
+enum VoiceGateCaptureSilenceTimeout: Equatable, Sendable {
+    case fixed(seconds: TimeInterval)
+    case adaptive(initialSeconds: TimeInterval, fastSeconds: TimeInterval, minimumSpeechSeconds: TimeInterval)
+
+    func seconds(afterSpeechDuration speechDuration: TimeInterval) -> TimeInterval {
+        switch self {
+        case .fixed(let seconds):
+            return seconds
+        case .adaptive(let initialSeconds, let fastSeconds, let minimumSpeechSeconds):
+            guard speechDuration >= minimumSpeechSeconds else {
+                return initialSeconds
+            }
+
+            return min(initialSeconds, fastSeconds)
+        }
+    }
 }
 
 @MainActor
@@ -257,7 +285,9 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
             return
         }
 
-        if receivedAt.timeIntervalSince(lastSpeechAt) >= configuration.silenceTimeoutSeconds {
+        let speechDuration = speechStartedAt.map { receivedAt.timeIntervalSince($0) } ?? 0
+        let silenceTimeoutSeconds = configuration.silenceTimeout.seconds(afterSpeechDuration: speechDuration)
+        if receivedAt.timeIntervalSince(lastSpeechAt) >= silenceTimeoutSeconds {
             finishUtterance(endedAt: receivedAt)
         }
     }

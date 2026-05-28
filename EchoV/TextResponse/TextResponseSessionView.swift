@@ -110,6 +110,13 @@ struct TextResponseSessionView: View {
                     StatusBadge(text: "Thinking", tone: .active)
                 }
 
+                let backend = container.voiceModeBackendIndicator()
+                VoiceModeBackendIndicator(
+                    title: backend.title,
+                    subtitle: backend.subtitle,
+                    isCloud: backend.isCloud
+                )
+
                 Button {
                     copyLatestAssistantMessage(from: session)
                 } label: {

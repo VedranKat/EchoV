@@ -34,10 +34,19 @@ struct GeneralSettingsView: View {
 
                         DividerLine()
 
+                        hotkeyRow(
+                            editableHotkey: .stop,
+                            icon: "stop.circle",
+                            title: "Stop EchoV",
+                            subtitle: "Cancel active listening, recording, generation, or speech."
+                        )
+
+                        DividerLine()
+
                         SettingsRow(
                             icon: "arrow.counterclockwise",
                             title: "Default hotkeys",
-                            subtitle: "Restore Option + Space and §."
+                            subtitle: "Restore dictation and stop shortcuts."
                         ) {
                             Button("Restore") {
                                 container.resetDictationHotkeysToDefaults()
@@ -224,6 +233,8 @@ struct GeneralSettingsView: View {
             container.settings.toggleHotkey
         case .pushToTalk:
             container.settings.pushToTalkHotkey
+        case .stop:
+            container.settings.stopHotkey
         }
     }
 
@@ -233,6 +244,8 @@ struct GeneralSettingsView: View {
             container.setToggleHotkey(binding)
         case .pushToTalk:
             container.setPushToTalkHotkey(binding)
+        case .stop:
+            container.setStopHotkey(binding)
         }
     }
 
@@ -380,6 +393,7 @@ struct GeneralSettingsView: View {
 private enum EditableHotkey: String, Identifiable {
     case toggle
     case pushToTalk
+    case stop
 
     var id: String {
         rawValue
@@ -391,6 +405,8 @@ private enum EditableHotkey: String, Identifiable {
             "Toggle hotkey"
         case .pushToTalk:
             "Push to talk"
+        case .stop:
+            "Stop EchoV"
         }
     }
 

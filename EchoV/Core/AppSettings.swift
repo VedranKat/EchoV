@@ -42,6 +42,18 @@ final class AppSettings {
         }
     }
 
+    var voiceModeTextActivationHotkey: HotkeyBinding? {
+        didSet {
+            saveHotkey(voiceModeTextActivationHotkey, forKey: Keys.voiceModeTextActivationHotkey)
+        }
+    }
+
+    var stopHotkey: HotkeyBinding? {
+        didSet {
+            saveHotkey(stopHotkey, forKey: Keys.stopHotkey)
+        }
+    }
+
     var isHistoryEnabled: Bool {
         didSet {
             userDefaults.set(isHistoryEnabled, forKey: Keys.isHistoryEnabled)
@@ -94,9 +106,27 @@ final class AppSettings {
         }
     }
 
-    var isVoiceGateSpeakerMatchEnabled: Bool {
+    var isVoiceGuardEnabled: Bool {
         didSet {
-            userDefaults.set(isVoiceGateSpeakerMatchEnabled, forKey: Keys.isVoiceGateSpeakerMatchEnabled)
+            userDefaults.set(isVoiceGuardEnabled, forKey: Keys.isVoiceGuardEnabled)
+        }
+    }
+
+    var isVoiceGuardEnabledForVoiceGate: Bool {
+        didSet {
+            userDefaults.set(isVoiceGuardEnabledForVoiceGate, forKey: Keys.isVoiceGuardEnabledForVoiceGate)
+        }
+    }
+
+    var isVoiceGuardEnabledForVoiceModeCommands: Bool {
+        didSet {
+            userDefaults.set(isVoiceGuardEnabledForVoiceModeCommands, forKey: Keys.isVoiceGuardEnabledForVoiceModeCommands)
+        }
+    }
+
+    var isVoiceGuardEnabledForVoiceModeRequests: Bool {
+        didSet {
+            userDefaults.set(isVoiceGuardEnabledForVoiceModeRequests, forKey: Keys.isVoiceGuardEnabledForVoiceModeRequests)
         }
     }
 
@@ -124,6 +154,36 @@ final class AppSettings {
         }
     }
 
+    var voiceModePromptEndingMode: VoiceModePromptEndingMode {
+        didSet {
+            userDefaults.set(voiceModePromptEndingMode.rawValue, forKey: Keys.voiceModePromptEndingMode)
+        }
+    }
+
+    var voiceModeAdaptiveFastPauseSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(voiceModeAdaptiveFastPauseSeconds, forKey: Keys.voiceModeAdaptiveFastPauseSeconds)
+        }
+    }
+
+    var voiceModeAdaptivePausePreset: VoiceModeAdaptivePausePreset {
+        didSet {
+            userDefaults.set(voiceModeAdaptivePausePreset.rawValue, forKey: Keys.voiceModeAdaptivePausePreset)
+        }
+    }
+
+    var voiceModeAdaptiveMinimumSpeechSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(voiceModeAdaptiveMinimumSpeechSeconds, forKey: Keys.voiceModeAdaptiveMinimumSpeechSeconds)
+        }
+    }
+
+    var voiceModeStopPhrase: String {
+        didSet {
+            userDefaults.set(Self.normalizedPromptPhrase(voiceModeStopPhrase), forKey: Keys.voiceModeStopPhrase)
+        }
+    }
+
     var voiceModeNoSpeechTimeoutSeconds: TimeInterval {
         didSet {
             userDefaults.set(voiceModeNoSpeechTimeoutSeconds, forKey: Keys.voiceModeNoSpeechTimeoutSeconds)
@@ -136,9 +196,15 @@ final class AppSettings {
         }
     }
 
-    var voiceModeResponseDelivery: VoiceModeResponseDelivery {
+    var isVoiceModePromptPreviewEnabled: Bool {
         didSet {
-            userDefaults.set(voiceModeResponseDelivery.rawValue, forKey: Keys.voiceModeResponseDelivery)
+            userDefaults.set(isVoiceModePromptPreviewEnabled, forKey: Keys.isVoiceModePromptPreviewEnabled)
+        }
+    }
+
+    var isVoiceModeHUDEnabled: Bool {
+        didSet {
+            userDefaults.set(isVoiceModeHUDEnabled, forKey: Keys.isVoiceModeHUDEnabled)
         }
     }
 
@@ -263,6 +329,14 @@ final class AppSettings {
             forKey: Keys.voiceModeActivationHotkey,
             from: userDefaults
         ) ?? .defaultVoiceModeActivation
+        self.voiceModeTextActivationHotkey = Self.loadHotkey(
+            forKey: Keys.voiceModeTextActivationHotkey,
+            from: userDefaults
+        ) ?? .defaultVoiceModeTextActivation
+        self.stopHotkey = Self.loadHotkey(
+            forKey: Keys.stopHotkey,
+            from: userDefaults
+        ) ?? .defaultStop
         self.isHistoryEnabled = userDefaults.object(forKey: Keys.isHistoryEnabled) as? Bool ?? true
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
         self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
@@ -271,7 +345,11 @@ final class AppSettings {
         self.clipboardInsertionMode = Self.loadClipboardInsertionMode(from: userDefaults)
         self.voiceGateSilenceTimeout = Self.loadVoiceGateSilenceTimeout(from: userDefaults)
         self.voiceGateSensitivity = Self.loadVoiceGateSensitivity(from: userDefaults)
-        self.isVoiceGateSpeakerMatchEnabled = userDefaults.object(forKey: Keys.isVoiceGateSpeakerMatchEnabled) as? Bool ?? false
+        let legacyVoiceGateGuardValue = userDefaults.object(forKey: Keys.isVoiceGateSpeakerMatchEnabled) as? Bool
+        self.isVoiceGuardEnabled = userDefaults.object(forKey: Keys.isVoiceGuardEnabled) as? Bool ?? legacyVoiceGateGuardValue ?? false
+        self.isVoiceGuardEnabledForVoiceGate = userDefaults.object(forKey: Keys.isVoiceGuardEnabledForVoiceGate) as? Bool ?? true
+        self.isVoiceGuardEnabledForVoiceModeCommands = userDefaults.object(forKey: Keys.isVoiceGuardEnabledForVoiceModeCommands) as? Bool ?? true
+        self.isVoiceGuardEnabledForVoiceModeRequests = userDefaults.object(forKey: Keys.isVoiceGuardEnabledForVoiceModeRequests) as? Bool ?? true
         self.voiceGateSpeakerMatchStrictness = Self.loadVoiceGateSpeakerMatchStrictness(from: userDefaults)
         self.voiceGateSpeakerVerificationMode = Self.loadVoiceGateSpeakerVerificationMode(from: userDefaults)
         self.isVoiceModeEnabled = userDefaults.object(forKey: Keys.isVoiceModeEnabled) as? Bool ?? false
@@ -281,6 +359,23 @@ final class AppSettings {
             defaultValue: 1.2,
             range: 0.5...3.0
         )
+        self.voiceModePromptEndingMode = Self.loadVoiceModePromptEndingMode(from: userDefaults)
+        self.voiceModeAdaptiveFastPauseSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.voiceModeAdaptiveFastPauseSeconds,
+            defaultValue: 0.6,
+            range: 0.4...1.2
+        )
+        self.voiceModeAdaptivePausePreset = Self.loadVoiceModeAdaptivePausePreset(from: userDefaults)
+        self.voiceModeAdaptiveMinimumSpeechSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.voiceModeAdaptiveMinimumSpeechSeconds,
+            defaultValue: 1.0,
+            range: 0.5...3.0
+        )
+        self.voiceModeStopPhrase = Self.normalizedPromptPhrase(
+            userDefaults.string(forKey: Keys.voiceModeStopPhrase) ?? "go ahead"
+        )
         self.voiceModeNoSpeechTimeoutSeconds = Self.loadClampedDouble(
             from: userDefaults,
             key: Keys.voiceModeNoSpeechTimeoutSeconds,
@@ -288,7 +383,8 @@ final class AppSettings {
             range: 3.0...15.0
         )
         self.voiceModeResponseBackend = Self.loadVoiceModeResponseBackend(from: userDefaults)
-        self.voiceModeResponseDelivery = Self.loadVoiceModeResponseDelivery(from: userDefaults)
+        self.isVoiceModePromptPreviewEnabled = userDefaults.object(forKey: Keys.isVoiceModePromptPreviewEnabled) as? Bool ?? true
+        self.isVoiceModeHUDEnabled = userDefaults.object(forKey: Keys.isVoiceModeHUDEnabled) as? Bool ?? true
         self.textResponseStreamsReplies = userDefaults.object(forKey: Keys.textResponseStreamsReplies) as? Bool ?? true
         self.textResponseShowsReasoning = userDefaults.object(forKey: Keys.textResponseShowsReasoning) as? Bool ?? false
         self.voiceModeCloudBaseURL = userDefaults.string(forKey: Keys.voiceModeCloudBaseURL) ?? ""
@@ -318,11 +414,14 @@ final class AppSettings {
         primeToggleHotkey = .defaultPrimeToggle
         voiceGateVerifierToggleHotkey = .defaultVoiceGateVerifierToggle
         voiceModeActivationHotkey = .defaultVoiceModeActivation
+        voiceModeTextActivationHotkey = .defaultVoiceModeTextActivation
+        stopHotkey = .defaultStop
     }
 
     func resetDictationHotkeysToDefaults() {
         toggleHotkey = .defaultToggle
         pushToTalkHotkey = .defaultPushToTalk
+        stopHotkey = .defaultStop
     }
 
     private func saveHotkey(_ hotkey: HotkeyBinding?, forKey key: String) {
@@ -440,15 +539,32 @@ final class AppSettings {
         return backend
     }
 
-    private static func loadVoiceModeResponseDelivery(from userDefaults: UserDefaults) -> VoiceModeResponseDelivery {
+    private static func loadVoiceModePromptEndingMode(from userDefaults: UserDefaults) -> VoiceModePromptEndingMode {
         guard
-            let rawValue = userDefaults.string(forKey: Keys.voiceModeResponseDelivery),
-            let delivery = VoiceModeResponseDelivery(rawValue: rawValue)
+            let rawValue = userDefaults.string(forKey: Keys.voiceModePromptEndingMode),
+            let mode = VoiceModePromptEndingMode(rawValue: rawValue)
         else {
-            return .spoken
+            return .fixedPause
         }
 
-        return delivery
+        return mode
+    }
+
+    private static func loadVoiceModeAdaptivePausePreset(from userDefaults: UserDefaults) -> VoiceModeAdaptivePausePreset {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.voiceModeAdaptivePausePreset),
+            let preset = VoiceModeAdaptivePausePreset(rawValue: rawValue)
+        else {
+            return .balanced
+        }
+
+        return preset
+    }
+
+    private static func normalizedPromptPhrase(_ phrase: String) -> String {
+        phrase
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
     }
 
     private static func loadClampedDouble(
@@ -476,6 +592,8 @@ private enum Keys {
     static let primeToggleHotkey = "settings.primeToggleHotkey"
     static let voiceGateVerifierToggleHotkey = "settings.voiceGateVerifierToggleHotkey"
     static let voiceModeActivationHotkey = "settings.voiceModeActivationHotkey"
+    static let voiceModeTextActivationHotkey = "settings.voiceModeTextActivationHotkey"
+    static let stopHotkey = "settings.stopHotkey"
     static let isHistoryEnabled = "settings.isHistoryEnabled"
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
     static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
@@ -485,13 +603,23 @@ private enum Keys {
     static let voiceGateSilenceTimeout = "settings.voiceGateSilenceTimeout"
     static let voiceGateSensitivity = "settings.voiceGateSensitivity"
     static let isVoiceGateSpeakerMatchEnabled = "settings.isVoiceGateSpeakerMatchEnabled"
+    static let isVoiceGuardEnabled = "settings.isVoiceGuardEnabled"
+    static let isVoiceGuardEnabledForVoiceGate = "settings.isVoiceGuardEnabledForVoiceGate"
+    static let isVoiceGuardEnabledForVoiceModeCommands = "settings.isVoiceGuardEnabledForVoiceModeCommands"
+    static let isVoiceGuardEnabledForVoiceModeRequests = "settings.isVoiceGuardEnabledForVoiceModeRequests"
     static let voiceGateSpeakerMatchStrictness = "settings.voiceGateSpeakerMatchStrictness"
     static let voiceGateSpeakerVerificationMode = "settings.voiceGateSpeakerVerificationMode"
     static let isVoiceModeEnabled = "settings.isVoiceModeEnabled"
     static let voiceModeResponsePauseSeconds = "settings.voiceModeResponsePauseSeconds"
+    static let voiceModePromptEndingMode = "settings.voiceModePromptEndingMode"
+    static let voiceModeAdaptiveFastPauseSeconds = "settings.voiceModeAdaptiveFastPauseSeconds"
+    static let voiceModeAdaptivePausePreset = "settings.voiceModeAdaptivePausePreset"
+    static let voiceModeAdaptiveMinimumSpeechSeconds = "settings.voiceModeAdaptiveMinimumSpeechSeconds"
+    static let voiceModeStopPhrase = "settings.voiceModeStopPhrase"
     static let voiceModeNoSpeechTimeoutSeconds = "settings.voiceModeNoSpeechTimeoutSeconds"
     static let voiceModeResponseBackend = "settings.voiceModeResponseBackend"
-    static let voiceModeResponseDelivery = "settings.voiceModeResponseDelivery"
+    static let isVoiceModePromptPreviewEnabled = "settings.isVoiceModePromptPreviewEnabled"
+    static let isVoiceModeHUDEnabled = "settings.isVoiceModeHUDEnabled"
     static let textResponseStreamsReplies = "settings.textResponseStreamsReplies"
     static let textResponseShowsReasoning = "settings.textResponseShowsReasoning"
     static let voiceModeCloudBaseURL = "settings.voiceModeCloudBaseURL"

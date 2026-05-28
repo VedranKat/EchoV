@@ -28,7 +28,7 @@ actor ONNXSpeakerVerificationService: SpeakerVerificationService {
 
     func score(audioURL: URL, profile: SpeakerProfile, threshold: Double) async throws -> SpeakerMatchResult {
         guard SpeakerVerifierRuntimeLayout.isInstalled() else {
-            throw AppError.speakerVerificationFailed(details: "Install the speaker verifier before using My Voice Only.")
+            throw AppError.speakerVerificationFailed(details: "Install the speaker verifier before using Voice Guard.")
         }
 
         guard profile.modelID == SpeakerVerifierRuntimeLayout.modelID else {

@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var menuBarController: MenuBarController?
     private var textResponseWindowController: TextResponseWindowController?
+    private var voiceModePromptPreviewWindowController: VoiceModePromptPreviewWindowController?
+    private var voiceModeHUDWindowController: VoiceModeHUDWindowController?
     private var textResponseNotificationService: TextResponseNotificationService?
     private var isTerminating = false
 
@@ -25,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         menuBarController = MenuBarController(container: container)
+        voiceModePromptPreviewWindowController = VoiceModePromptPreviewWindowController(container: container)
+        voiceModeHUDWindowController = VoiceModeHUDWindowController(container: container)
         container.start()
     }
 

@@ -125,6 +125,23 @@ final class DictationPipeline {
         }
     }
 
+    func cancelRecording() async {
+        guard currentRecording != nil else {
+            return
+        }
+
+        let stoppedAudio = try? await recorder.stop()
+        let urls = [
+            currentRecording?.fileURL,
+            stoppedAudio?.fileURL,
+            lastNormalizedAudioURL
+        ].compactMap { $0 }
+        temporaryAudioStore.delete(urls)
+        currentRecording = nil
+        lastNormalizedAudioURL = nil
+        setState(.cancelled)
+    }
+
     func transcribeAndInsert(_ recordedAudio: RecordedAudio) async {
         currentRecording = recordedAudio
         lastNormalizedAudioURL = nil
@@ -188,6 +205,39 @@ final class DictationPipeline {
         } catch {
             rememberFailedAudio()
             throw AppError.unknown(details: error.localizedDescription)
+        }
+    }
+
+    func cleanAndInsertSelectedText(
+        _ text: String,
+        cleanupEngine overrideCleanupEngine: (any TextCleanupEngine)? = nil
+    ) async -> Bool {
+        let selectedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selectedText.isEmpty else {
+            setState(.cancelled)
+            appState.lastDetail = "No selected text was found."
+            return false
+        }
+
+        do {
+            let transcript = Transcript(text: selectedText)
+            let cleanupEngine = overrideCleanupEngine ?? self.cleanupEngine
+            setState(.cleaning)
+            let cleanedText = try await cleanupEngine.clean(transcript, level: postProcessingLevel())
+            setState(.inserting)
+            _ = try await insertion.insert(cleanedText.text)
+            let finalTranscript = Transcript(text: cleanedText.text)
+            if isHistoryEnabled() {
+                await history.append(finalTranscript)
+            }
+            setState(.completed(finalTranscript))
+            return true
+        } catch let error as AppError {
+            fail(error)
+            return false
+        } catch {
+            fail(.unknown(details: error.localizedDescription))
+            return false
         }
     }
 

@@ -3,18 +3,28 @@ import Foundation
 @MainActor
 final class VoiceModeController {
     private static let wakePhraseSilenceTimeout: TimeInterval = 0.6
-    private static let maximumWakePhraseDuration: TimeInterval = 1.8
+    private static let maximumWakePhraseDuration: TimeInterval = 2.4
 
     private let appState: AppState
     private let capture: VoiceActivatedAudioCapture
     private let pipeline: DictationPipeline
     private let speechOutput: any SpeechOutputService
-    private let responsePauseSeconds: @MainActor () -> TimeInterval
+    private let promptEndingPolicy: @MainActor () -> VoiceModePromptEndingPolicy
     private let noSpeechTimeoutSeconds: @MainActor () -> TimeInterval
-    private let responseDelivery: @MainActor () -> VoiceModeResponseDelivery
     private let speechVoiceIdentifier: @MainActor () -> String
     private let speechSpeed: @MainActor () -> Double
     private let onTextResponse: @MainActor (_ userText: String, _ responseText: String) -> Void
+    private var selectedTextProvider: @MainActor () async -> String?
+    private var promptPreview: @MainActor (
+        _ command: VoiceModeActivationCommand,
+        _ promptText: String,
+        _ includesSelectionContext: Bool
+    ) async -> String?
+    private var responseBackendValidationError: @MainActor () -> AppError?
+    private var verifyCommandSpeaker: @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool
+    private var verifyRequestSpeaker: @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool
+    private var onCleanUpSelection: @MainActor () async -> Bool
+    private var onContinueTextResponse: @MainActor (_ userText: String) async -> Bool
     private var onStopped: @MainActor () -> Void
     private let onStateChanged: @MainActor () -> Void
 
@@ -22,6 +32,7 @@ final class VoiceModeController {
     private var isEnabled = false
     private var promptSpeechStarted = false
     private var noSpeechTimeoutTask: Task<Void, Never>?
+    private var activeOperationTask: Task<Void, Never>?
     private var runID = 0
 
     init(
@@ -30,12 +41,22 @@ final class VoiceModeController {
         pipeline: DictationPipeline,
         textGenerationEngine: any LocalTextGenerationEngine,
         speechOutput: any SpeechOutputService,
-        responsePauseSeconds: @escaping @MainActor () -> TimeInterval,
+        promptEndingPolicy: @escaping @MainActor () -> VoiceModePromptEndingPolicy,
         noSpeechTimeoutSeconds: @escaping @MainActor () -> TimeInterval,
-        responseDelivery: @escaping @MainActor () -> VoiceModeResponseDelivery,
         speechVoiceIdentifier: @escaping @MainActor () -> String,
         speechSpeed: @escaping @MainActor () -> Double,
         onTextResponse: @escaping @MainActor (_ userText: String, _ responseText: String) -> Void,
+        selectedTextProvider: @escaping @MainActor () async -> String? = { nil },
+        promptPreview: @escaping @MainActor (
+            _ command: VoiceModeActivationCommand,
+            _ promptText: String,
+            _ includesSelectionContext: Bool
+        ) async -> String? = { _, promptText, _ in promptText },
+        responseBackendValidationError: @escaping @MainActor () -> AppError? = { nil },
+        verifyCommandSpeaker: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool = { _ in true },
+        verifyRequestSpeaker: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool = { _ in true },
+        onCleanUpSelection: @escaping @MainActor () async -> Bool = { false },
+        onContinueTextResponse: @escaping @MainActor (_ userText: String) async -> Bool = { _ in false },
         onStopped: @escaping @MainActor () -> Void,
         onStateChanged: @escaping @MainActor () -> Void
     ) {
@@ -44,12 +65,18 @@ final class VoiceModeController {
         self.pipeline = pipeline
         self.textGenerationEngine = textGenerationEngine
         self.speechOutput = speechOutput
-        self.responsePauseSeconds = responsePauseSeconds
+        self.promptEndingPolicy = promptEndingPolicy
         self.noSpeechTimeoutSeconds = noSpeechTimeoutSeconds
-        self.responseDelivery = responseDelivery
         self.speechVoiceIdentifier = speechVoiceIdentifier
         self.speechSpeed = speechSpeed
         self.onTextResponse = onTextResponse
+        self.selectedTextProvider = selectedTextProvider
+        self.promptPreview = promptPreview
+        self.responseBackendValidationError = responseBackendValidationError
+        self.verifyCommandSpeaker = verifyCommandSpeaker
+        self.verifyRequestSpeaker = verifyRequestSpeaker
+        self.onCleanUpSelection = onCleanUpSelection
+        self.onContinueTextResponse = onContinueTextResponse
         self.onStopped = onStopped
         self.onStateChanged = onStateChanged
     }
@@ -62,6 +89,40 @@ final class VoiceModeController {
         self.onStopped = onStopped
     }
 
+    func setOnContinueTextResponse(_ onContinueTextResponse: @escaping @MainActor (_ userText: String) async -> Bool) {
+        self.onContinueTextResponse = onContinueTextResponse
+    }
+
+    func setOnCleanUpSelection(_ onCleanUpSelection: @escaping @MainActor () async -> Bool) {
+        self.onCleanUpSelection = onCleanUpSelection
+    }
+
+    func setSelectedTextProvider(_ selectedTextProvider: @escaping @MainActor () async -> String?) {
+        self.selectedTextProvider = selectedTextProvider
+    }
+
+    func setPromptPreview(
+        _ promptPreview: @escaping @MainActor (
+            _ command: VoiceModeActivationCommand,
+            _ promptText: String,
+            _ includesSelectionContext: Bool
+        ) async -> String?
+    ) {
+        self.promptPreview = promptPreview
+    }
+
+    func setResponseBackendValidationError(_ responseBackendValidationError: @escaping @MainActor () -> AppError?) {
+        self.responseBackendValidationError = responseBackendValidationError
+    }
+
+    func setVoiceGuardVerifiers(
+        commandVerifier: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool,
+        requestVerifier: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool
+    ) {
+        self.verifyCommandSpeaker = commandVerifier
+        self.verifyRequestSpeaker = requestVerifier
+    }
+
     func setTextGenerationEngine(_ textGenerationEngine: any LocalTextGenerationEngine) {
         self.textGenerationEngine = textGenerationEngine
     }
@@ -71,12 +132,14 @@ final class VoiceModeController {
         await startWakeListening()
     }
 
-    func activateManually() async {
+    func activateManually(command: VoiceModeActivationCommand = .spoken) async {
         isEnabled = true
         cancelNoSpeechTimeout()
+        cancelActiveOperation()
         capture.stop()
         speechOutput.stop()
-        await startPromptListening()
+        let selectedText = await selectedTextContext(for: command)
+        await startPromptListening(command: command, selectedText: selectedText)
     }
 
     func stop() {
@@ -84,6 +147,7 @@ final class VoiceModeController {
         isEnabled = false
         invalidateCurrentRun()
         cancelNoSpeechTimeout()
+        cancelActiveOperation()
         capture.stop()
         speechOutput.stop()
         if wasEnabled {
@@ -92,7 +156,7 @@ final class VoiceModeController {
         onStopped()
     }
 
-    private func startWakeListening() async {
+    private func startWakeListening(detail: String? = nil) async {
         guard isEnabled else {
             return
         }
@@ -100,7 +164,10 @@ final class VoiceModeController {
         let runID = beginNewRun()
         cancelNoSpeechTimeout()
         appState.lastError = nil
-        setState(.voiceModeWakeListening, detail: "Voice Mode is listening for Computer.")
+        setState(
+            .voiceModeWakeListening,
+            detail: detail ?? "Voice Mode is listening for Computer, Slate, Continue, or Prime cleanup."
+        )
 
         do {
             try await capture.start(
@@ -117,7 +184,7 @@ final class VoiceModeController {
                     self.setState(.voiceModeCheckingWakePhrase)
                 },
                 onUtteranceEnded: { [weak self] recordedAudio in
-                    Task { @MainActor [weak self] in
+                    self?.activeOperationTask = Task { @MainActor [weak self] in
                         await self?.handleWakePhraseCandidate(recordedAudio, runID: runID)
                     }
                 },
@@ -149,12 +216,31 @@ final class VoiceModeController {
         }
 
         guard recordedAudio.duration <= Self.maximumWakePhraseDuration else {
+            appState.recordRejectedWakeTranscript(VoiceModeRejectedWakeTranscript(
+                text: "",
+                reason: .durationExceeded
+            ))
             deleteTemporaryAudio(recordedAudio)
             await startWakeListening()
             return
         }
 
         do {
+            guard try await verifyCommandSpeaker(recordedAudio) else {
+                deleteTemporaryAudio(recordedAudio)
+                guard isEnabled, isCurrentRun(runID) else {
+                    return
+                }
+
+                await startWakeListening(detail: "Different voice ignored. Listening again.")
+                return
+            }
+
+            guard isEnabled, isCurrentRun(runID) else {
+                deleteTemporaryAudio(recordedAudio)
+                return
+            }
+
             let transcript = try await pipeline.transcribeForVoiceMode(
                 recordedAudio,
                 status: "Checking activation phrase..."
@@ -164,9 +250,22 @@ final class VoiceModeController {
                 return
             }
 
-            if WakePhraseMatcher.isActivationPhrase(transcript.text) {
-                await startPromptListening()
+            if let command = WakePhraseMatcher.activationCommand(for: transcript.text) {
+                if command == .cleanUpSelection {
+                    await cleanUpSelection()
+                    return
+                }
+
+                let selectedText = await selectedTextContext(for: command)
+                await startPromptListening(command: command, selectedText: selectedText)
             } else {
+                let rejectedText = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !rejectedText.isEmpty {
+                    appState.recordRejectedWakeTranscript(VoiceModeRejectedWakeTranscript(
+                        text: rejectedText,
+                        reason: .notExactActivationCommand
+                    ))
+                }
                 await startWakeListening()
             }
         } catch let error as AppError {
@@ -182,21 +281,22 @@ final class VoiceModeController {
         }
     }
 
-    private func startPromptListening() async {
+    private func startPromptListening(command: VoiceModeActivationCommand, selectedText: String?) async {
         guard isEnabled else {
             return
         }
 
         let runID = beginNewRun()
+        let promptEndingPolicy = promptEndingPolicy()
         promptSpeechStarted = false
         appState.lastError = nil
-        setState(.voiceModePromptListening, detail: "Computer. Listening for your request.")
-        startNoSpeechTimeout(runID: runID)
+        setState(.voiceModePromptListening, detail: "\(command.displayName). Listening for your request.")
+        startNoSpeechTimeout(runID: runID, command: command)
 
         do {
             try await capture.start(
                 configuration: VoiceGateCaptureConfiguration(
-                    silenceTimeoutSeconds: responsePauseSeconds(),
+                    silenceTimeout: promptEndingPolicy.captureSilenceTimeout,
                     sensitivity: .medium
                 ),
                 onSpeechStarted: { [weak self] startedAt in
@@ -209,8 +309,14 @@ final class VoiceModeController {
                     self.setState(.voiceModePromptRecording(startedAt: startedAt), detail: "Listening for the end of your request.")
                 },
                 onUtteranceEnded: { [weak self] recordedAudio in
-                    Task { @MainActor [weak self] in
-                        await self?.handlePromptUtterance(recordedAudio, runID: runID)
+                    self?.activeOperationTask = Task { @MainActor [weak self] in
+                        await self?.handlePromptUtterance(
+                            recordedAudio,
+                            runID: runID,
+                            command: command,
+                            selectedText: selectedText,
+                            promptEndingPolicy: promptEndingPolicy
+                        )
                     }
                 },
                 onError: { [weak self] error in
@@ -234,7 +340,13 @@ final class VoiceModeController {
         }
     }
 
-    private func handlePromptUtterance(_ recordedAudio: RecordedAudio, runID: Int) async {
+    private func handlePromptUtterance(
+        _ recordedAudio: RecordedAudio,
+        runID: Int,
+        command: VoiceModeActivationCommand,
+        selectedText: String?,
+        promptEndingPolicy: VoiceModePromptEndingPolicy
+    ) async {
         guard isEnabled, isCurrentRun(runID) else {
             deleteTemporaryAudio(recordedAudio)
             return
@@ -243,23 +355,69 @@ final class VoiceModeController {
         cancelNoSpeechTimeout()
 
         do {
+            guard try await verifyRequestSpeaker(recordedAudio) else {
+                deleteTemporaryAudio(recordedAudio)
+                guard isEnabled, isCurrentRun(runID) else {
+                    return
+                }
+
+                await startWakeListening(detail: "Different voice ignored. Listening again.")
+                return
+            }
+
+            guard isEnabled, isCurrentRun(runID) else {
+                deleteTemporaryAudio(recordedAudio)
+                return
+            }
+
             let transcript = try await pipeline.transcribeForVoiceMode(
                 recordedAudio,
                 status: "Transcribing request..."
             )
-            let userText = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let promptText = promptEndingPolicy.promptText(from: transcript.text)
+            let composedText = VoiceModePromptComposer.compose(
+                userPrompt: promptText.text,
+                selectedText: selectedText
+            )
             guard isEnabled, isCurrentRun(runID) else {
                 return
             }
 
-            guard !userText.isEmpty else {
+            guard !composedText.isEmpty else {
                 setState(.cancelled, detail: "No request was detected.")
                 await startWakeListening()
                 return
             }
 
+            let reviewedPrompt = await promptPreview(
+                command,
+                composedText,
+                selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            )
+
+            guard !Task.isCancelled, isEnabled, isCurrentRun(runID) else {
+                return
+            }
+
+            guard let reviewedText = reviewedPrompt else {
+                setState(.cancelled, detail: "Prompt cancelled.")
+                await startWakeListening()
+                return
+            }
+
+            let userText = reviewedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !userText.isEmpty else {
+                setState(.cancelled, detail: "Prompt cancelled.")
+                await startWakeListening()
+                return
+            }
+
             setState(.voiceModeThinking, detail: "Generating response...")
-            let delivery = responseDelivery()
+            if let validationError = responseBackendValidationError() {
+                throw validationError
+            }
+
+            let delivery = command.delivery
             let request: ChatGenerationRequest
             switch delivery {
             case .spoken:
@@ -267,6 +425,19 @@ final class VoiceModeController {
                     .chatPrompt
                     .chatGenerationRequest(policy: .finalAnswerOnly)
             case .textResponse:
+                if command == .continueTextResponse {
+                    setState(.voiceModeThinking, detail: "Continuing latest text response session...")
+                    guard await onContinueTextResponse(userText) else {
+                        setState(.cancelled, detail: "No text response session is available to continue.")
+                        await startWakeListening()
+                        return
+                    }
+
+                    setState(.completed(Transcript(text: userText, segments: [])), detail: "Text response session continued.")
+                    await startWakeListening()
+                    return
+                }
+
                 request = TextResponseSessionPrompt(messages: [
                     TextResponseMessage(role: .user, text: userText)
                 ]).chatGenerationRequest(policy: .finalAnswerOnly)
@@ -320,7 +491,7 @@ final class VoiceModeController {
         }
     }
 
-    private func startNoSpeechTimeout(runID: Int) {
+    private func startNoSpeechTimeout(runID: Int, command: VoiceModeActivationCommand) {
         cancelNoSpeechTimeout()
         let timeout = max(1, noSpeechTimeoutSeconds())
         let milliseconds = Int(timeout * 1000)
@@ -331,23 +502,53 @@ final class VoiceModeController {
                 return
             }
 
-            await self?.cancelPromptForNoSpeech(runID: runID)
+            await self?.cancelPromptForNoSpeech(runID: runID, command: command)
         }
     }
 
-    private func cancelPromptForNoSpeech(runID: Int) async {
+    private func cancelPromptForNoSpeech(runID: Int, command: VoiceModeActivationCommand) async {
         guard isEnabled, isCurrentRun(runID), !promptSpeechStarted else {
             return
         }
 
         capture.stop()
-        setState(.cancelled, detail: "Voice Mode cancelled because no request followed Computer.")
+        setState(.cancelled, detail: "Voice Mode cancelled because no request followed \(command.displayName).")
         await startWakeListening()
     }
 
     private func cancelNoSpeechTimeout() {
         noSpeechTimeoutTask?.cancel()
         noSpeechTimeoutTask = nil
+    }
+
+    private func cancelActiveOperation() {
+        activeOperationTask?.cancel()
+        activeOperationTask = nil
+    }
+
+    private func selectedTextContext(for command: VoiceModeActivationCommand) async -> String? {
+        guard command == .textResponse else {
+            return nil
+        }
+
+        return await selectedTextProvider()
+    }
+
+    private func cleanUpSelection() async {
+        setState(.cleaning, detail: "Cleaning selected text with Prime...")
+        guard await onCleanUpSelection() else {
+            let failureDetail = appState.lastError?.userMessage
+                ?? appState.lastDetail
+                ?? "Prime cleanup failed."
+            await startWakeListening(detail: "\(failureDetail) Listening again.")
+            return
+        }
+
+        guard isEnabled else {
+            return
+        }
+
+        await startWakeListening()
     }
 
     private func fail(_ error: AppError) {

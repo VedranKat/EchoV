@@ -45,6 +45,12 @@ final class MenuBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        let stopItem = NSMenuItem(title: "Stop EchoV", action: #selector(stopEchoV), keyEquivalent: "")
+        stopItem.target = self
+        menu.addItem(stopItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "Quit EchoV", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
 
@@ -69,6 +75,12 @@ final class MenuBarController {
     @objc private func requestAccessibilityAccess() {
         container.promptForAccessibilityAccess()
         rebuildMenu()
+    }
+
+    @objc private func stopEchoV() {
+        Task {
+            await container.stopActiveWork()
+        }
     }
 
     private func makeMenuBarImage() -> NSImage {

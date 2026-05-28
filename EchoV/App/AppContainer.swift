@@ -11,6 +11,8 @@ final class AppContainer {
         static let primeToggle = UInt32(4)
         static let voiceGateVerifierToggle = UInt32(5)
         static let voiceModeActivation = UInt32(6)
+        static let voiceModeTextActivation = UInt32(7)
+        static let stop = UInt32(8)
     }
 
     private enum RecordingTrigger {
@@ -18,6 +20,74 @@ final class AppContainer {
         case pushToTalk
         case voiceGate
         case voiceMode
+    }
+
+    private enum VoiceGuardWorkflow {
+        case voiceGate
+        case voiceModeCommand
+        case voiceModeRequest
+
+        var emptyWindowsError: String {
+            switch self {
+            case .voiceGate:
+                "Voice Gate did not create audio windows for speaker verification."
+            case .voiceModeCommand:
+                "Voice Mode did not create command audio windows for speaker verification."
+            case .voiceModeRequest:
+                "Voice Mode did not create request audio windows for speaker verification."
+            }
+        }
+
+        var matchedContinuousDetail: String {
+            switch self {
+            case .voiceGate:
+                "Voice matched across command %.0f%% minimum. Transcribing..."
+            case .voiceModeCommand:
+                "Voice matched across command %.0f%% minimum."
+            case .voiceModeRequest:
+                "Voice matched across request %.0f%% minimum. Transcribing..."
+            }
+        }
+
+        var matchedStartDetail: String {
+            switch self {
+            case .voiceGate:
+                "Voice matched %.0f%%. Transcribing..."
+            case .voiceModeCommand:
+                "Voice matched %.0f%%."
+            case .voiceModeRequest:
+                "Voice matched %.0f%%. Transcribing..."
+            }
+        }
+
+        var checkingContinuousDetail: String {
+            switch self {
+            case .voiceGate:
+                "Checking voice across the utterance..."
+            case .voiceModeCommand:
+                "Checking voice across the command..."
+            case .voiceModeRequest:
+                "Checking voice across the request..."
+            }
+        }
+
+        var checkingStartDetail: String {
+            switch self {
+            case .voiceGate, .voiceModeCommand, .voiceModeRequest:
+                "Checking voice at the start..."
+            }
+        }
+
+        var continuousMismatchDetail: String {
+            switch self {
+            case .voiceGate:
+                "Voice changed or overlapped. Utterance ignored."
+            case .voiceModeCommand:
+                "Voice changed or overlapped. Command ignored."
+            case .voiceModeRequest:
+                "Voice changed or overlapped. Request ignored."
+            }
+        }
     }
 
     let appState: AppState
@@ -40,12 +110,15 @@ final class AppContainer {
     private let speakerVerificationService: any SpeakerVerificationService
     private let voiceGateVerificationWindows: AudioWindowExtractor
     private let voiceProfileEnrollmentRecorder: any AudioRecorder
+    private let selectedTextCapture: SelectedTextCaptureService
     private let textResponseSessionNotifier: TextResponseSessionNotifier
     private var localTextGenerationEngine: any LocalTextGenerationEngine
     private var hasStarted = false
     private var recordingTrigger: RecordingTrigger?
     private var isVoiceGateArmed = false
     private var voiceProfileEnrollmentRecording: RecordedAudio?
+    private var textResponseGenerationTasks: [UUID: Task<Void, Never>] = [:]
+    private var promptPreviewContinuation: CheckedContinuation<String?, Never>?
     var isVoiceProfileEnrollmentRecording = false
     var isVoiceProfileEnrollmentProcessing = false
 
@@ -69,6 +142,7 @@ final class AppContainer {
         speakerVerificationService: any SpeakerVerificationService,
         voiceGateVerificationWindows: AudioWindowExtractor,
         voiceProfileEnrollmentRecorder: any AudioRecorder,
+        selectedTextCapture: SelectedTextCaptureService,
         textResponseSessionNotifier: TextResponseSessionNotifier,
         localTextGenerationEngine: any LocalTextGenerationEngine
     ) {
@@ -91,6 +165,7 @@ final class AppContainer {
         self.speakerVerificationService = speakerVerificationService
         self.voiceGateVerificationWindows = voiceGateVerificationWindows
         self.voiceProfileEnrollmentRecorder = voiceProfileEnrollmentRecorder
+        self.selectedTextCapture = selectedTextCapture
         self.textResponseSessionNotifier = textResponseSessionNotifier
         self.localTextGenerationEngine = localTextGenerationEngine
     }
@@ -143,9 +218,17 @@ final class AppContainer {
             pipeline: pipeline,
             textGenerationEngine: localTextGenerationEngine,
             speechOutput: KokoroSpeechOutputService(),
-            responsePauseSeconds: { settings.voiceModeResponsePauseSeconds },
+            promptEndingPolicy: {
+                VoiceModePromptEndingPolicy(
+                    mode: settings.voiceModePromptEndingMode,
+                    fixedPauseSeconds: settings.voiceModeResponsePauseSeconds,
+                    adaptivePausePreset: settings.voiceModeAdaptivePausePreset,
+                    customAdaptiveFastPauseSeconds: settings.voiceModeAdaptiveFastPauseSeconds,
+                    customAdaptiveMinimumSpeechSeconds: settings.voiceModeAdaptiveMinimumSpeechSeconds,
+                    stopPhrase: settings.voiceModeStopPhrase
+                )
+            },
             noSpeechTimeoutSeconds: { settings.voiceModeNoSpeechTimeoutSeconds },
-            responseDelivery: { settings.voiceModeResponseDelivery },
             speechVoiceIdentifier: { settings.voiceModeKokoroVoiceIdentifier },
             speechSpeed: { settings.voiceModeKokoroSpeed },
             onTextResponse: { userText, responseText in
@@ -187,12 +270,40 @@ final class AppContainer {
                 minimumDuration: 3,
                 selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
             ),
+            selectedTextCapture: SelectedTextCaptureService(accessibilityPermission: accessibilityPermission),
             textResponseSessionNotifier: textResponseSessionNotifier,
             localTextGenerationEngine: localTextGenerationEngine
         )
         voiceModeController.setOnStopped { [weak container] in
             container?.recordingTrigger = nil
         }
+        voiceModeController.setOnContinueTextResponse { [weak container] userText in
+            await container?.continueLatestTextResponseSession(userText: userText) ?? false
+        }
+        voiceModeController.setOnCleanUpSelection { [weak container] in
+            await container?.cleanUpSelectedText() ?? false
+        }
+        voiceModeController.setSelectedTextProvider { [weak container] in
+            await container?.captureSelectedText()
+        }
+        voiceModeController.setPromptPreview { [weak container] command, promptText, includesSelectionContext in
+            await container?.reviewVoiceModePrompt(
+                command: command,
+                promptText: promptText,
+                includesSelectionContext: includesSelectionContext
+            )
+        }
+        voiceModeController.setResponseBackendValidationError { [weak container] in
+            container?.voiceModeResponseBackendValidationError()
+        }
+        voiceModeController.setVoiceGuardVerifiers(
+            commandVerifier: { [weak container] recordedAudio in
+                try await container?.verifyVoiceModeCommandSpeaker(recordedAudio) ?? true
+            },
+            requestVerifier: { [weak container] recordedAudio in
+                try await container?.verifyVoiceModeRequestSpeaker(recordedAudio) ?? true
+            }
+        )
         return container
     }
 
@@ -205,7 +316,7 @@ final class AppContainer {
             await modelStore.restoreSelection()
             if !SpeakerVerifierRuntimeLayout.isInstalled()
                 || speakerProfileStore.profile?.modelID != SpeakerVerifierRuntimeLayout.modelID {
-                settings.isVoiceGateSpeakerMatchEnabled = false
+                settings.isVoiceGuardEnabled = false
             }
             configureASREngineFromSelectedModel()
             configurePostProcessingEngineFromSelectedModel()
@@ -303,7 +414,7 @@ final class AppContainer {
 
     func setVoiceGateVerifierToggleHotkey(_ binding: HotkeyBinding?) {
         guard isHotkeyAvailable(binding, excluding: \.voiceGateVerifierToggleHotkey) else {
-            appState.lastError = .hotkeyUnavailable(details: "Voice Gate verifier cannot use the same hotkey as another EchoV shortcut.")
+            appState.lastError = .hotkeyUnavailable(details: "Voice Guard cannot use the same hotkey as another EchoV shortcut.")
             return
         }
 
@@ -318,6 +429,26 @@ final class AppContainer {
         }
 
         settings.voiceModeActivationHotkey = binding
+        registerHotkeys()
+    }
+
+    func setVoiceModeTextActivationHotkey(_ binding: HotkeyBinding?) {
+        guard isHotkeyAvailable(binding, excluding: \.voiceModeTextActivationHotkey) else {
+            appState.lastError = .hotkeyUnavailable(details: "Voice Mode text cannot use the same hotkey as another EchoV shortcut.")
+            return
+        }
+
+        settings.voiceModeTextActivationHotkey = binding
+        registerHotkeys()
+    }
+
+    func setStopHotkey(_ binding: HotkeyBinding?) {
+        guard isHotkeyAvailable(binding, excluding: \.stopHotkey) else {
+            appState.lastError = .hotkeyUnavailable(details: "Stop EchoV cannot use the same hotkey as another EchoV shortcut.")
+            return
+        }
+
+        settings.stopHotkey = binding
         registerHotkeys()
     }
 
@@ -407,14 +538,14 @@ final class AppContainer {
 
     func deleteVoiceProfile() {
         speakerProfileStore.deleteProfile()
-        settings.isVoiceGateSpeakerMatchEnabled = false
+        settings.isVoiceGuardEnabled = false
         appState.lastDetail = "Voice profile removed."
         appState.notifyStatusChanged()
     }
 
     func deleteAllVoiceProfiles() {
         speakerProfileStore.deleteAllProfiles()
-        settings.isVoiceGateSpeakerMatchEnabled = false
+        settings.isVoiceGuardEnabled = false
         appState.lastDetail = "All voice profiles removed."
         appState.notifyStatusChanged()
     }
@@ -509,8 +640,9 @@ final class AppContainer {
         configurePostProcessingEngineFromSelectedModel()
     }
 
-    func setVoiceModeResponseDelivery(_ delivery: VoiceModeResponseDelivery) {
-        settings.voiceModeResponseDelivery = delivery
+    func setVoiceModeHUDEnabled(_ isEnabled: Bool) {
+        settings.isVoiceModeHUDEnabled = isEnabled
+        appState.notifyStatusChanged()
     }
 
     func setTextResponseSessionCreatedHandler(_ handler: @escaping (UUID, String, String) -> Void) {
@@ -519,6 +651,173 @@ final class AppContainer {
 
     func availableSpeechVoices() -> [SpeechVoice] {
         voiceModeController.availableSpeechVoices
+    }
+
+    func captureSelectedText() async -> String? {
+        await selectedTextCapture.captureSelectedText()
+    }
+
+    func cleanUpSelectedText() async -> Bool {
+        guard let selectedText = await captureSelectedText() else {
+            appState.lastDetail = "No selected text is available to clean up."
+            appState.notifyStatusChanged()
+            return false
+        }
+
+        let cleanupEngine: (any TextCleanupEngine)?
+        let shouldShutdownCleanupEngine: Bool
+
+        if settings.isPostProcessingEnabled {
+            cleanupEngine = nil
+            shouldShutdownCleanupEngine = false
+        } else if settings.voiceModeResponseBackend == .localLlama {
+            cleanupEngine = GemmaPrimeTextCleanupEngine(textGenerationEngine: localTextGenerationEngine)
+            shouldShutdownCleanupEngine = false
+        } else if let oneShotCleanupEngine = makeOneShotPrimeCleanupEngine() {
+            cleanupEngine = oneShotCleanupEngine
+            shouldShutdownCleanupEngine = true
+        } else {
+            appState.lastError = .cleanupModelNotConfigured
+            appState.lastDetail = AppError.cleanupModelNotConfigured.userMessage
+            appState.notifyStatusChanged()
+            return false
+        }
+
+        defer {
+            if shouldShutdownCleanupEngine, let cleanupEngine {
+                Task {
+                    await cleanupEngine.shutdown()
+                }
+            }
+        }
+
+        return await pipeline.cleanAndInsertSelectedText(selectedText, cleanupEngine: cleanupEngine)
+    }
+
+    private func makeOneShotPrimeCleanupEngine() -> (any TextCleanupEngine)? {
+        guard
+            let runtime = modelStore.selectedLlamaRuntime,
+            runtime.validation.isValid,
+            let selection = modelStore.selectedPostProcessingModel,
+            selection.validation.isValid
+        else {
+            return nil
+        }
+
+        return GemmaPrimeTextCleanupEngine(
+            textGenerationEngine: Gemma4LocalTextGenerationEngine(
+                modelURL: selection.url,
+                runtimeURL: runtime.url
+            )
+        )
+    }
+
+    func voiceModeBackendIndicator() -> (title: String, subtitle: String, isCloud: Bool) {
+        switch settings.voiceModeResponseBackend {
+        case .localLlama:
+            let model = modelStore.selectedPostProcessingModel?.displayName ?? "Selected local llama model"
+            return ("Local", model, false)
+        case .openAICompatibleCloud:
+            let model = settings.voiceModeCloudModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ("Cloud", model.isEmpty ? "Not configured" : model, true)
+        }
+    }
+
+    func voiceModeResponseBackendValidationError() -> AppError? {
+        guard settings.voiceModeResponseBackend == .openAICompatibleCloud else {
+            return nil
+        }
+
+        let baseURL = settings.voiceModeCloudBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = settings.voiceModeCloudModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKey = settings.voiceModeCloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard
+            !baseURL.isEmpty,
+            let url = URL(string: baseURL),
+            let scheme = url.scheme?.lowercased(),
+            ["http", "https"].contains(scheme),
+            url.host != nil
+        else {
+            return .voiceModeResponseNotConfigured
+        }
+
+        guard !model.isEmpty, !apiKey.isEmpty else {
+            return .voiceModeResponseNotConfigured
+        }
+
+        return nil
+    }
+
+    func reviewVoiceModePrompt(
+        command: VoiceModeActivationCommand,
+        promptText: String,
+        includesSelectionContext: Bool
+    ) async -> String? {
+        guard settings.isVoiceModePromptPreviewEnabled else {
+            return promptText
+        }
+
+        promptPreviewContinuation?.resume(returning: nil)
+        promptPreviewContinuation = nil
+
+        let backend = voiceModeBackendIndicator()
+        let request = VoiceModePromptPreviewRequest(
+            commandTitle: command.displayName,
+            promptText: promptText,
+            backendTitle: backend.title,
+            backendSubtitle: backend.subtitle,
+            isCloudBackend: backend.isCloud,
+            includesSelectionContext: includesSelectionContext
+        )
+
+        appState.voiceModePromptPreview = request
+        appState.lastDetail = "Review the prompt before sending."
+        appState.notifyStatusChanged()
+
+        return await withCheckedContinuation { continuation in
+            promptPreviewContinuation = continuation
+        }
+    }
+
+    func resolveVoiceModePromptPreview(id: UUID, promptText: String?) {
+        guard appState.voiceModePromptPreview?.id == id else {
+            return
+        }
+
+        let trimmedText = promptText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedText = trimmedText?.isEmpty == false ? trimmedText : nil
+        let continuation = promptPreviewContinuation
+        promptPreviewContinuation = nil
+        appState.voiceModePromptPreview = nil
+        appState.notifyStatusChanged()
+        continuation?.resume(returning: resolvedText)
+    }
+
+    func cancelVoiceModePromptPreview() {
+        guard let request = appState.voiceModePromptPreview else {
+            return
+        }
+
+        resolveVoiceModePromptPreview(id: request.id, promptText: nil)
+    }
+
+    func continueLatestTextResponseSession(userText: String) async -> Bool {
+        guard let sessionID = textResponseSessions.sessions.first?.id else {
+            appState.lastDetail = "No text response session is available to continue."
+            appState.notifyStatusChanged()
+            return false
+        }
+
+        guard !textResponseSessions.isGenerating(sessionID: sessionID) else {
+            appState.lastDetail = "The latest text response session is still generating."
+            appState.notifyStatusChanged()
+            return false
+        }
+
+        textResponseSessions.select(sessionID)
+        await continueTextResponseSession(sessionID: sessionID, userText: userText)
+        return true
     }
 
     func continueTextResponseSession(sessionID: UUID, userText: String) async {
@@ -531,6 +830,26 @@ final class AppContainer {
             return
         }
 
+        if let validationError = voiceModeResponseBackendValidationError() {
+            appState.lastError = validationError
+            appState.lastDetail = validationError.userMessage
+            appState.notifyStatusChanged()
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            await self.performContinueTextResponseSession(sessionID: sessionID, trimmedText: trimmedText)
+        }
+        textResponseGenerationTasks[sessionID] = task
+        await task.value
+        textResponseGenerationTasks[sessionID] = nil
+    }
+
+    private func performContinueTextResponseSession(sessionID: UUID, trimmedText: String) async {
         textResponseSessions.appendUserMessage(sessionID: sessionID, text: trimmedText)
         let messages = textResponseSessions.messages(for: sessionID)
         let policy = ChatGenerationPolicy.chat(
@@ -563,6 +882,10 @@ final class AppContainer {
             textResponseSessions.setError(error.userMessage, sessionID: sessionID)
             appState.lastError = error
             appState.lastDetail = error.userMessage
+            appState.notifyStatusChanged()
+        } catch is CancellationError {
+            textResponseSessions.setError("Generation stopped.", sessionID: sessionID)
+            appState.lastDetail = "Text response stopped."
             appState.notifyStatusChanged()
         } catch {
             textResponseSessions.setError(error.localizedDescription, sessionID: sessionID)
@@ -631,38 +954,52 @@ final class AppContainer {
         appState.notifyStatusChanged()
     }
 
-    func toggleVoiceGateSpeakerMatchFromHotkey() {
-        if settings.isVoiceGateSpeakerMatchEnabled {
-            settings.isVoiceGateSpeakerMatchEnabled = false
-            appState.lastDetail = "Voice Gate verifier disabled."
+    func setVoiceGuardEnabled(_ isEnabled: Bool) {
+        guard isEnabled else {
+            settings.isVoiceGuardEnabled = false
+            appState.lastDetail = "Voice Guard disabled."
             appState.notifyStatusChanged()
             return
         }
 
+        guard validateVoiceGuardCanEnable() else {
+            return
+        }
+
+        settings.isVoiceGuardEnabled = true
+        appState.lastError = nil
+        appState.lastDetail = "Voice Guard enabled."
+        appState.notifyStatusChanged()
+    }
+
+    func toggleVoiceGuardFromHotkey() {
+        setVoiceGuardEnabled(!settings.isVoiceGuardEnabled)
+    }
+
+    @discardableResult
+    private func validateVoiceGuardCanEnable() -> Bool {
         guard speakerProfileStore.profile != nil else {
-            appState.lastError = .speakerVerificationFailed(details: "Record a voice profile before enabling My Voice Only.")
+            appState.lastError = .speakerVerificationFailed(details: "Record a voice profile before enabling Voice Guard.")
             appState.lastDetail = "Voice profile is missing."
             appState.notifyStatusChanged()
-            return
+            return false
         }
 
         guard speakerProfileStore.profile?.modelID == SpeakerVerifierRuntimeLayout.modelID else {
-            appState.lastError = .speakerVerificationFailed(details: "Re-enroll your voice profile before enabling My Voice Only.")
+            appState.lastError = .speakerVerificationFailed(details: "Re-enroll your voice profile before enabling Voice Guard.")
             appState.lastDetail = "Voice profile needs to be re-enrolled."
             appState.notifyStatusChanged()
-            return
+            return false
         }
 
         guard SpeakerVerifierRuntimeLayout.isInstalled() else {
-            appState.lastError = .speakerVerificationFailed(details: "Install the speaker verifier before enabling My Voice Only.")
+            appState.lastError = .speakerVerificationFailed(details: "Install the speaker verifier before enabling Voice Guard.")
             appState.lastDetail = "Speaker verifier is not installed."
             appState.notifyStatusChanged()
-            return
+            return false
         }
 
-        settings.isVoiceGateSpeakerMatchEnabled = true
-        appState.lastDetail = "Voice Gate verifier enabled."
-        appState.notifyStatusChanged()
+        return true
     }
 
     func selectPostProcessingModel(at url: URL) async {
@@ -865,7 +1202,7 @@ final class AppContainer {
             do {
                 try hotkeyService.register(hotkeyRegistrations(includeUtilityHotkeys: false))
                 appState.lastError = .hotkeyUnavailable(
-                    details: "Prime or Voice Gate verifier hotkeys could not be registered, so EchoV kept the core dictation hotkeys active."
+                    details: "Prime or Voice Guard hotkeys could not be registered, so EchoV kept the core dictation hotkeys active."
                 )
             } catch {
                 DiagnosticLog.write("Core hotkey registration failed: \(error.localizedDescription)")
@@ -879,13 +1216,15 @@ final class AppContainer {
             ("Toggle", settings.toggleHotkey),
             ("Push-to-talk", settings.pushToTalkHotkey),
             ("Voice Gate", settings.voiceGateHotkey),
-            ("Voice Mode", settings.voiceModeActivationHotkey)
+            ("Voice Mode", settings.voiceModeActivationHotkey),
+            ("Voice Mode text", settings.voiceModeTextActivationHotkey),
+            ("Stop EchoV", settings.stopHotkey)
         ]
 
         if includeUtilityHotkeys {
             configuredHotkeys.append(contentsOf: [
                 ("Prime", settings.primeToggleHotkey),
-                ("Voice Gate verifier", settings.voiceGateVerifierToggleHotkey)
+                ("Voice Guard", settings.voiceGateVerifierToggleHotkey)
             ])
         }
 
@@ -1000,7 +1339,7 @@ final class AppContainer {
                     binding: voiceGateVerifierToggleHotkey,
                     onPressed: { [weak self] in
                         Task { @MainActor [weak self] in
-                            self?.toggleVoiceGateSpeakerMatchFromHotkey()
+                            self?.toggleVoiceGuardFromHotkey()
                         }
                     },
                     onReleased: nil
@@ -1015,7 +1354,37 @@ final class AppContainer {
                     binding: voiceModeActivationHotkey,
                     onPressed: { [weak self] in
                         Task { @MainActor [weak self] in
-                            await self?.handleVoiceModeHotkey()
+                            await self?.handleVoiceModeHotkey(command: .spoken)
+                        }
+                    },
+                    onReleased: nil
+                )
+            )
+        }
+
+        if let voiceModeTextActivationHotkey = settings.voiceModeTextActivationHotkey {
+            registrations.append(
+                HotkeyRegistration(
+                    id: HotkeyID.voiceModeTextActivation,
+                    binding: voiceModeTextActivationHotkey,
+                    onPressed: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.handleVoiceModeHotkey(command: .textResponse)
+                        }
+                    },
+                    onReleased: nil
+                )
+            )
+        }
+
+        if let stopHotkey = settings.stopHotkey {
+            registrations.append(
+                HotkeyRegistration(
+                    id: HotkeyID.stop,
+                    binding: stopHotkey,
+                    onPressed: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.stopActiveWork()
                         }
                     },
                     onReleased: nil
@@ -1040,7 +1409,9 @@ final class AppContainer {
             \.voiceGateHotkey,
             \.primeToggleHotkey,
             \.voiceGateVerifierToggleHotkey,
-            \.voiceModeActivationHotkey
+            \.voiceModeActivationHotkey,
+            \.voiceModeTextActivationHotkey,
+            \.stopHotkey
         ]
 
         return bindings.allSatisfy { keyPath in
@@ -1050,8 +1421,10 @@ final class AppContainer {
 
     private func handleToggleHotkey() async {
         switch recordingTrigger {
-        case nil:
-            guard appState.state.canStartRecording else {
+        case nil, .voiceMode:
+            guard makeVoiceModeYieldToManualRecordingIfNeeded(),
+                  appState.state.canStartRecording
+            else {
                 return
             }
 
@@ -1074,13 +1447,14 @@ final class AppContainer {
             return
         case .voiceGate:
             return
-        case .voiceMode:
-            return
         }
     }
 
     private func handlePushToTalkPressed() async {
-        guard recordingTrigger == nil, appState.state.canStartRecording else {
+        guard makeVoiceModeYieldToManualRecordingIfNeeded(),
+              recordingTrigger == nil,
+              appState.state.canStartRecording
+        else {
             return
         }
 
@@ -1132,7 +1506,10 @@ final class AppContainer {
             return
         }
 
-        guard recordingTrigger == nil, appState.state.canStartRecording else {
+        guard makeVoiceModeYieldToManualRecordingIfNeeded(),
+              recordingTrigger == nil,
+              appState.state.canStartRecording
+        else {
             return
         }
 
@@ -1141,7 +1518,23 @@ final class AppContainer {
         await startVoiceGateListening()
     }
 
-    private func handleVoiceModeHotkey() async {
+    private func makeVoiceModeYieldToManualRecordingIfNeeded() -> Bool {
+        guard recordingTrigger == .voiceMode else {
+            return recordingTrigger == nil
+        }
+
+        guard appState.state.canYieldVoiceModeToManualRecording else {
+            return false
+        }
+
+        cancelVoiceModePromptPreview()
+        voiceModeController.stop()
+        recordingTrigger = nil
+        appState.lastError = nil
+        return true
+    }
+
+    private func handleVoiceModeHotkey(command: VoiceModeActivationCommand) async {
         guard settings.isVoiceModeEnabled else {
             appState.lastError = .recordingFailed(details: "Enable Voice Mode before using its activation hotkey.")
             appState.lastDetail = "Voice Mode is off."
@@ -1153,8 +1546,38 @@ final class AppContainer {
             return
         }
 
+        cancelVoiceModePromptPreview()
         recordingTrigger = .voiceMode
-        await voiceModeController.activateManually()
+        await voiceModeController.activateManually(command: command)
+    }
+
+    func stopActiveWork() async {
+        for task in textResponseGenerationTasks.values {
+            task.cancel()
+        }
+        textResponseGenerationTasks.removeAll()
+
+        voiceGateCapture.stop()
+        cancelVoiceModePromptPreview()
+        voiceModeController.stop()
+        isVoiceGateArmed = false
+
+        if isVoiceProfileEnrollmentRecording {
+            _ = try? await voiceProfileEnrollmentRecorder.stop()
+            isVoiceProfileEnrollmentRecording = false
+            voiceProfileEnrollmentRecording = nil
+        }
+
+        await pipeline.cancelRecording()
+        recordingTrigger = nil
+        appState.lastError = nil
+        appState.lastDetail = "EchoV stopped."
+        appState.state = .cancelled
+        appState.notifyStatusChanged()
+
+        if settings.isVoiceModeEnabled {
+            await startVoiceModeIfPossible()
+        }
     }
 
     private func startVoiceModeIfPossible() async {
@@ -1281,9 +1704,9 @@ final class AppContainer {
             return
         }
 
-        if settings.isVoiceGateSpeakerMatchEnabled {
+        if shouldUseVoiceGuard(for: .voiceGate) {
             do {
-                let isAccepted = try await verifyVoiceGateSpeaker(recordedAudio)
+                let isAccepted = try await verifyVoiceGuardSpeaker(recordedAudio, workflow: .voiceGate)
                 guard isAccepted else {
                     temporaryAudioStore.delete([recordedAudio.fileURL])
 
@@ -1323,14 +1746,48 @@ final class AppContainer {
         await startVoiceGateListening()
     }
 
-    private func verifyVoiceGateSpeaker(_ recordedAudio: RecordedAudio) async throws -> Bool {
+    private func shouldUseVoiceGuard(for workflow: VoiceGuardWorkflow) -> Bool {
+        guard settings.isVoiceGuardEnabled else {
+            return false
+        }
+
+        switch workflow {
+        case .voiceGate:
+            return settings.isVoiceGuardEnabledForVoiceGate
+        case .voiceModeCommand:
+            return settings.isVoiceGuardEnabledForVoiceModeCommands
+        case .voiceModeRequest:
+            return settings.isVoiceGuardEnabledForVoiceModeRequests
+        }
+    }
+
+    private func verifyVoiceModeCommandSpeaker(_ recordedAudio: RecordedAudio) async throws -> Bool {
+        guard shouldUseVoiceGuard(for: .voiceModeCommand) else {
+            return true
+        }
+
+        return try await verifyVoiceGuardSpeaker(recordedAudio, workflow: .voiceModeCommand)
+    }
+
+    private func verifyVoiceModeRequestSpeaker(_ recordedAudio: RecordedAudio) async throws -> Bool {
+        guard shouldUseVoiceGuard(for: .voiceModeRequest) else {
+            return true
+        }
+
+        return try await verifyVoiceGuardSpeaker(recordedAudio, workflow: .voiceModeRequest)
+    }
+
+    private func verifyVoiceGuardSpeaker(
+        _ recordedAudio: RecordedAudio,
+        workflow: VoiceGuardWorkflow
+    ) async throws -> Bool {
         guard let profile = speakerProfileStore.profile else {
-            throw AppError.speakerVerificationFailed(details: "Turn off My Voice Only or record a voice profile first.")
+            throw AppError.speakerVerificationFailed(details: "Turn off Voice Guard or record a voice profile first.")
         }
 
         let threshold = settings.voiceGateSpeakerMatchStrictness.minimumSimilarity
         let mode = settings.voiceGateSpeakerVerificationMode
-        appState.lastDetail = mode == .continuous ? "Checking voice across the command..." : "Checking voice at the start..."
+        appState.lastDetail = mode == .continuous ? workflow.checkingContinuousDetail : workflow.checkingStartDetail
         setState(.transcribing(status: "Checking voice..."))
 
         let windows = try verificationWindows(for: recordedAudio, mode: mode)
@@ -1339,7 +1796,7 @@ final class AppContainer {
         }
 
         guard !windows.isEmpty else {
-            throw AppError.speakerVerificationFailed(details: "Voice Gate did not create audio windows for speaker verification.")
+            throw AppError.speakerVerificationFailed(details: workflow.emptyWindowsError)
         }
 
         var acceptedSimilarities: [Double] = []
@@ -1357,7 +1814,7 @@ final class AppContainer {
 
             guard result.isMatch else {
                 appState.lastDetail = mode == .continuous
-                    ? "Voice changed or overlapped. Command ignored."
+                    ? workflow.continuousMismatchDetail
                     : "Different voice ignored."
                 setState(.cancelled)
                 return false
@@ -1368,8 +1825,8 @@ final class AppContainer {
 
         let minimumSimilarity = acceptedSimilarities.min() ?? 0
         appState.lastDetail = mode == .continuous
-            ? String(format: "Voice matched across command %.0f%% minimum. Transcribing...", minimumSimilarity * 100)
-            : String(format: "Voice matched %.0f%%. Transcribing...", minimumSimilarity * 100)
+            ? String(format: workflow.matchedContinuousDetail, minimumSimilarity * 100)
+            : String(format: workflow.matchedStartDetail, minimumSimilarity * 100)
         return true
     }
 
@@ -1444,6 +1901,29 @@ private extension DictationState {
              .cleaning,
              .inserting:
             false
+        }
+    }
+
+    var canYieldVoiceModeToManualRecording: Bool {
+        switch self {
+        case .voiceModeWakeListening,
+             .voiceModeCheckingWakePhrase,
+             .voiceModePromptListening,
+             .completed,
+             .failed,
+             .cancelled:
+            return true
+        case .idle,
+             .listening,
+             .recording,
+             .voiceGateRecording,
+             .voiceModePromptRecording,
+             .voiceModeThinking,
+             .voiceModeSpeaking,
+             .transcribing,
+             .cleaning,
+             .inserting:
+            return false
         }
     }
 
