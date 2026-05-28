@@ -1,17 +1,21 @@
 import Foundation
 
 struct PrimeCleanupPrompt: Equatable, Sendable {
-    let system: String
-    let user: String
+    let chatPrompt: LocalChatPrompt
+
+    var system: String { chatPrompt.system }
+    var user: String { chatPrompt.user }
 
     init(transcript: Transcript, level: PostProcessingLevel) {
-        self.system = Self.systemInstructions(for: level)
-        self.user = """
-        Clean this transcript for insertion into the active app.
+        self.chatPrompt = LocalChatPrompt(
+            system: Self.systemInstructions(for: level),
+            user: """
+            Clean this transcript for insertion into the active app.
 
-        Transcript:
-        \(transcript.text)
-        """
+            Transcript:
+            \(transcript.text)
+            """
+        )
     }
 
     private static func systemInstructions(for level: PostProcessingLevel) -> String {
@@ -23,7 +27,7 @@ struct PrimeCleanupPrompt: Equatable, Sendable {
             Remove only obvious ASR artifacts, nonsensical fragments, accidental repetitions, and stray filler words.
             Preserve the speaker's wording, tone, sentence order, names, technical terms, numbers, and intentional formatting.
             Do not summarize, condense, polish heavily, or change the speaker's style.
-            Return only the cleaned text.
+            Return only the cleaned text. Do not include hidden reasoning, chain-of-thought, or <think> blocks.
             """
         case .balanced:
             """
@@ -31,7 +35,7 @@ struct PrimeCleanupPrompt: Equatable, Sendable {
             Rewrite dictated text into concise, readable text while preserving the speaker's intent.
             Remove filler words, false starts, repeated phrases, and obvious ASR artifacts.
             Keep names, technical terms, numbers, and formatting that appear intentional.
-            Return only the cleaned text.
+            Return only the cleaned text. Do not include hidden reasoning, chain-of-thought, or <think> blocks.
             """
         case .concise:
             """
@@ -40,7 +44,7 @@ struct PrimeCleanupPrompt: Equatable, Sendable {
             Remove filler words, false starts, repetition, hedging, rambling, and nonessential asides.
             Combine or shorten sentences when it makes the result clearer.
             Keep names, technical terms, numbers, and required formatting intact.
-            Return only the cleaned text.
+            Return only the cleaned text. Do not include hidden reasoning, chain-of-thought, or <think> blocks.
             """
         }
     }

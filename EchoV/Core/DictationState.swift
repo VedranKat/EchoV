@@ -5,6 +5,12 @@ enum DictationState: Equatable {
     case listening
     case recording(startedAt: Date)
     case voiceGateRecording(startedAt: Date)
+    case voiceModeWakeListening
+    case voiceModeCheckingWakePhrase
+    case voiceModePromptListening
+    case voiceModePromptRecording(startedAt: Date)
+    case voiceModeThinking
+    case voiceModeSpeaking
     case transcribing(status: String)
     case cleaning
     case inserting
@@ -22,6 +28,18 @@ enum DictationState: Equatable {
             "Recording..."
         case .voiceGateRecording:
             "Recording speech..."
+        case .voiceModeWakeListening:
+            "Listening for Computer..."
+        case .voiceModeCheckingWakePhrase:
+            "Checking activation phrase..."
+        case .voiceModePromptListening:
+            "Listening..."
+        case .voiceModePromptRecording:
+            "Recording request..."
+        case .voiceModeThinking:
+            "Thinking..."
+        case .voiceModeSpeaking:
+            "Speaking..."
         case .transcribing(let status):
             status
         case .cleaning:

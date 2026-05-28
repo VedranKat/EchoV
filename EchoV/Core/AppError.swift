@@ -14,6 +14,9 @@ enum AppError: LocalizedError, Equatable {
     case transcriptionTimedOut
     case cleanupModelNotConfigured
     case cleanupFailed(details: String)
+    case voiceModeResponseNotConfigured
+    case voiceModeResponseFailed(details: String)
+    case speechOutputFailed(details: String)
     case speakerVerificationFailed(details: String)
     case insertionFailed(details: String)
     case unknown(details: String)
@@ -47,9 +50,15 @@ enum AppError: LocalizedError, Equatable {
         case .transcriptionTimedOut:
             "Transcription timed out."
         case .cleanupModelNotConfigured:
-            "Select a local text cleanup model before using Prime."
+            "Select a local text model before generating text."
         case .cleanupFailed:
             "Prime cleanup failed."
+        case .voiceModeResponseNotConfigured:
+            "Configure the Voice Mode cloud response provider before using it."
+        case .voiceModeResponseFailed:
+            "Voice Mode response failed."
+        case .speechOutputFailed:
+            "Voice response failed."
         case .speakerVerificationFailed:
             "Voice match failed."
         case .insertionFailed:
@@ -68,6 +77,8 @@ enum AppError: LocalizedError, Equatable {
              .recordingFailed(let details),
              .transcriptionFailed(let details),
              .cleanupFailed(let details),
+             .voiceModeResponseFailed(let details),
+             .speechOutputFailed(let details),
              .speakerVerificationFailed(let details),
              .insertionFailed(let details),
              .unknown(let details):
@@ -77,7 +88,8 @@ enum AppError: LocalizedError, Equatable {
              .modelNotSelected,
              .recordingTooShort,
              .transcriptionTimedOut,
-             .cleanupModelNotConfigured:
+             .cleanupModelNotConfigured,
+             .voiceModeResponseNotConfigured:
             nil
         }
     }

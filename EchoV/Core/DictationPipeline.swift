@@ -130,17 +130,12 @@ final class DictationPipeline {
         lastNormalizedAudioURL = nil
 
         do {
-            setState(.transcribing(status: "Preparing audio..."))
-            let normalizedAudioURL = try await normalizer.normalize(recordedAudio.fileURL)
-            lastNormalizedAudioURL = normalizedAudioURL
-            appState.lastDetail = audioDetail(for: normalizedAudioURL)
-            setState(.transcribing(status: "Loading model / transcribing..."))
-            let transcript = try await withTimeout(seconds: Self.transcriptionTimeoutSeconds) {
-                try await self.asrEngine.transcribe(
-                    audioURL: normalizedAudioURL,
-                    options: ASROptions()
-                )
-            }
+            let transcription = try await transcribeAudio(
+                recordedAudio,
+                status: "Loading model / transcribing...",
+                cleanupAudioOnSuccess: false
+            )
+            let transcript = transcription.transcript
 
             let cleanedText: CleanedText
             if isPostProcessingEnabled() {
@@ -163,7 +158,7 @@ final class DictationPipeline {
                 await history.append(finalTranscript)
             }
             setState(.completed(finalTranscript))
-            cleanupTemporaryAudio(recordedAudioURL: recordedAudio.fileURL, normalizedAudioURL: normalizedAudioURL)
+            cleanupTemporaryAudio(recordedAudioURL: recordedAudio.fileURL, normalizedAudioURL: transcription.normalizedAudioURL)
             currentRecording = nil
             lastNormalizedAudioURL = nil
             temporaryAudioStore.clearFailedAudio()
@@ -173,6 +168,26 @@ final class DictationPipeline {
         } catch {
             rememberFailedAudio()
             fail(.unknown(details: error.localizedDescription))
+        }
+    }
+
+    func transcribeForVoiceMode(_ recordedAudio: RecordedAudio, status: String) async throws -> Transcript {
+        do {
+            let transcription = try await transcribeAudio(
+                recordedAudio,
+                status: status,
+                cleanupAudioOnSuccess: true
+            )
+            currentRecording = nil
+            lastNormalizedAudioURL = nil
+            temporaryAudioStore.clearFailedAudio()
+            return transcription.transcript
+        } catch let error as AppError {
+            rememberFailedAudio()
+            throw error
+        } catch {
+            rememberFailedAudio()
+            throw AppError.unknown(details: error.localizedDescription)
         }
     }
 
@@ -190,6 +205,33 @@ final class DictationPipeline {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         let size = attributes?[.size] as? Int64 ?? 0
         return "Audio: \(url.lastPathComponent), \(size) bytes"
+    }
+
+    private func transcribeAudio(
+        _ recordedAudio: RecordedAudio,
+        status: String,
+        cleanupAudioOnSuccess: Bool
+    ) async throws -> AudioTranscription {
+        currentRecording = recordedAudio
+        lastNormalizedAudioURL = nil
+
+        setState(.transcribing(status: "Preparing audio..."))
+        let normalizedAudioURL = try await normalizer.normalize(recordedAudio.fileURL)
+        lastNormalizedAudioURL = normalizedAudioURL
+        appState.lastDetail = audioDetail(for: normalizedAudioURL)
+        setState(.transcribing(status: status))
+        let transcript = try await withTimeout(seconds: Self.transcriptionTimeoutSeconds) {
+            try await self.asrEngine.transcribe(
+                audioURL: normalizedAudioURL,
+                options: ASROptions()
+            )
+        }
+
+        if cleanupAudioOnSuccess {
+            temporaryAudioStore.delete([recordedAudio.fileURL, normalizedAudioURL])
+        }
+
+        return AudioTranscription(transcript: transcript, normalizedAudioURL: normalizedAudioURL)
     }
 
     private func cleanupTemporaryAudio(recordedAudioURL: URL, normalizedAudioURL: URL) {
@@ -233,4 +275,9 @@ final class DictationPipeline {
             return result
         }
     }
+}
+
+private struct AudioTranscription {
+    let transcript: Transcript
+    let normalizedAudioURL: URL
 }

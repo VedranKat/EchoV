@@ -5,11 +5,35 @@ protocol LocalTextGenerationEngine: Sendable {
     var displayName: String { get }
 
     func prepare() async throws
-    func generate(prompt: PrimeCleanupPrompt) async throws -> String
+    func generate(prompt: LocalChatPrompt) async throws -> String
+    func generate(request: ChatGenerationRequest) async throws -> ChatGenerationResult
+    func stream(
+        request: ChatGenerationRequest,
+        onEvent: @escaping @MainActor @Sendable (ChatGenerationEvent) async -> Void
+    ) async throws -> ChatGenerationResult
     func shutdown() async
 }
 
 extension LocalTextGenerationEngine {
+    func generate(request: ChatGenerationRequest) async throws -> ChatGenerationResult {
+        let rawOutput = try await generate(prompt: request.legacyPrompt)
+        return ChatGenerationResult.fromRawOutput(rawOutput, policy: request.policy)
+    }
+
+    func stream(
+        request: ChatGenerationRequest,
+        onEvent: @escaping @MainActor @Sendable (ChatGenerationEvent) async -> Void
+    ) async throws -> ChatGenerationResult {
+        let result = try await generate(request: request)
+        if !result.reasoning.isEmpty {
+            await onEvent(.reasoningDelta(result.reasoning))
+        }
+        if !result.content.isEmpty {
+            await onEvent(.contentDelta(result.content))
+        }
+        return result
+    }
+
     func shutdown() async {}
 }
 
@@ -21,7 +45,7 @@ struct UnconfiguredLocalTextGenerationEngine: LocalTextGenerationEngine {
         throw AppError.cleanupModelNotConfigured
     }
 
-    func generate(prompt: PrimeCleanupPrompt) async throws -> String {
+    func generate(prompt: LocalChatPrompt) async throws -> String {
         throw AppError.cleanupModelNotConfigured
     }
 }
@@ -45,8 +69,19 @@ struct Gemma4LocalTextGenerationEngine: LocalTextGenerationEngine {
         try await runtime.prepare()
     }
 
-    func generate(prompt: PrimeCleanupPrompt) async throws -> String {
+    func generate(prompt: LocalChatPrompt) async throws -> String {
         try await runtime.generate(prompt: prompt)
+    }
+
+    func generate(request: ChatGenerationRequest) async throws -> ChatGenerationResult {
+        try await runtime.generate(request: request)
+    }
+
+    func stream(
+        request: ChatGenerationRequest,
+        onEvent: @escaping @MainActor @Sendable (ChatGenerationEvent) async -> Void
+    ) async throws -> ChatGenerationResult {
+        try await runtime.stream(request: request, onEvent: onEvent)
     }
 
     func shutdown() async {

@@ -61,6 +61,8 @@ struct SettingsRootView: View {
             GeneralSettingsView()
         case .voiceGate:
             VoiceGateSettingsView()
+        case .voiceMode:
+            VoiceModeSettingsView()
         case .model:
             TranscriptionSettingsView()
         case .history:
@@ -116,6 +118,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case status
     case dictation
     case voiceGate
+    case voiceMode
     case model
     case history
     case proxy
@@ -132,6 +135,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "Dictation"
         case .voiceGate:
             "Voice Gate"
+        case .voiceMode:
+            "Voice Mode"
         case .model:
             "Model"
         case .history:
@@ -153,6 +158,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "mic"
         case .voiceGate:
             "ear"
+        case .voiceMode:
+            "speaker.wave.2.bubble"
         case .model:
             "waveform.badge.magnifyingglass"
         case .history:

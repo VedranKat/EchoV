@@ -147,6 +147,18 @@ struct StatusOverviewView: View {
             "Recording"
         case .voiceGateRecording:
             "Recording Speech"
+        case .voiceModeWakeListening:
+            "Voice Mode"
+        case .voiceModeCheckingWakePhrase:
+            "Checking Phrase"
+        case .voiceModePromptListening:
+            "Voice Mode"
+        case .voiceModePromptRecording:
+            "Recording Request"
+        case .voiceModeThinking:
+            "Thinking"
+        case .voiceModeSpeaking:
+            "Speaking"
         case .transcribing:
             "Transcribing"
         case .cleaning:
@@ -181,6 +193,18 @@ struct StatusOverviewView: View {
             "Speak naturally. Stop recording when you are done."
         case .voiceGateRecording:
             "Speech detected. EchoV will transcribe after the configured silence timeout."
+        case .voiceModeWakeListening:
+            "Voice Mode is listening for Computer."
+        case .voiceModeCheckingWakePhrase:
+            "Checking whether the last phrase was Computer."
+        case .voiceModePromptListening:
+            "Computer detected. Say your request."
+        case .voiceModePromptRecording:
+            "Listening for the end of your request."
+        case .voiceModeThinking:
+            "Generating a local response."
+        case .voiceModeSpeaking:
+            "Speaking the local response."
         case .transcribing(let status):
             status
         case .cleaning:
@@ -206,6 +230,18 @@ struct StatusOverviewView: View {
             "record.circle"
         case .voiceGateRecording:
             "waveform.circle"
+        case .voiceModeWakeListening:
+            "speaker.wave.2.bubble"
+        case .voiceModeCheckingWakePhrase:
+            "text.magnifyingglass"
+        case .voiceModePromptListening:
+            "captions.bubble"
+        case .voiceModePromptRecording:
+            "waveform.circle"
+        case .voiceModeThinking:
+            "cpu"
+        case .voiceModeSpeaking:
+            "speaker.wave.2"
         case .transcribing, .cleaning:
             "waveform"
         case .inserting:
@@ -223,7 +259,18 @@ struct StatusOverviewView: View {
         switch container.appState.state {
         case .idle, .completed:
             .success
-        case .listening, .recording, .voiceGateRecording, .transcribing, .cleaning, .inserting:
+        case .listening,
+             .recording,
+             .voiceGateRecording,
+             .voiceModeWakeListening,
+             .voiceModeCheckingWakePhrase,
+             .voiceModePromptListening,
+             .voiceModePromptRecording,
+             .voiceModeThinking,
+             .voiceModeSpeaking,
+             .transcribing,
+             .cleaning,
+             .inserting:
             .active
         case .failed:
             .danger
@@ -238,9 +285,11 @@ struct StatusOverviewView: View {
             "Ready"
         case .listening:
             "Armed"
-        case .recording, .voiceGateRecording:
+        case .voiceModeWakeListening, .voiceModePromptListening:
+            "Listening"
+        case .recording, .voiceGateRecording, .voiceModePromptRecording:
             "Live"
-        case .transcribing, .cleaning, .inserting:
+        case .voiceModeCheckingWakePhrase, .voiceModeThinking, .voiceModeSpeaking, .transcribing, .cleaning, .inserting:
             "Working"
         case .completed:
             "Done"

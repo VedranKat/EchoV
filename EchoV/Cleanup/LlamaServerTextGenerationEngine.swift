@@ -66,34 +66,143 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
         }
     }
 
-    func generate(prompt: PrimeCleanupPrompt) async throws -> String {
-        try await prepare()
+    func generate(prompt: LocalChatPrompt) async throws -> String {
+        let request = prompt.chatGenerationRequest(policy: .chat(stream: false, showReasoning: true))
+        return try await generateRaw(request: request)
+    }
 
-        var request = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(ChatCompletionRequest(
-            messages: [
-                .init(role: "system", content: prompt.system),
-                .init(role: "user", content: prompt.user)
-            ],
-            temperature: 0.2,
-            topP: 0.9,
-            maxTokens: 512
-        ))
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            let detail = String(data: data, encoding: .utf8) ?? "No response body."
-            throw AppError.cleanupFailed(details: "llama-server generation failed: \(detail)")
+    func generate(request: ChatGenerationRequest) async throws -> ChatGenerationResult {
+        let response = try await generateChatCompletionResponse(request: request)
+        guard let message = response.choices.first?.message, !message.content.isEmpty else {
+            throw AppError.cleanupFailed(details: "llama-server returned an empty response.")
         }
 
-        let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+        let parsedContent = ChatGenerationResult.fromRawOutput(message.content, policy: request.policy)
+        switch request.policy {
+        case .finalAnswerOnly:
+            return parsedContent
+        case .chat(_, let showReasoning):
+            let reasoning = [message.reasoningText, parsedContent.reasoning]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
+            return ChatGenerationResult(
+                content: parsedContent.content,
+                reasoning: showReasoning ? reasoning : ""
+            )
+        }
+    }
+
+    func stream(
+        request: ChatGenerationRequest,
+        onEvent: @escaping @MainActor @Sendable (ChatGenerationEvent) async -> Void
+    ) async throws -> ChatGenerationResult {
+        try await prepare()
+
+        let (bytes, response) = try await session.bytes(for: chatCompletionURLRequest(request: request, stream: true))
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AppError.cleanupFailed(details: "llama-server returned a non-HTTP streaming response.")
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let detail = try await Self.collectStreamingErrorBody(from: bytes)
+            throw AppError.cleanupFailed(details: "llama-server streaming failed: \(detail)")
+        }
+
+        var parser = ModelOutputStreamParser()
+        var content = ""
+        var reasoning = ""
+
+        for try await line in bytes.lines {
+            guard let payload = Self.serverSentEventPayload(from: line) else {
+                continue
+            }
+
+            if payload == "[DONE]" {
+                break
+            }
+
+            guard let data = payload.data(using: .utf8) else {
+                continue
+            }
+
+            let chunk = try JSONDecoder().decode(StreamingChatCompletionChunk.self, from: data)
+            for choice in chunk.choices {
+                if let reasoningDelta = choice.delta.reasoningText, !reasoningDelta.isEmpty {
+                    if request.showsReasoning {
+                        reasoning += reasoningDelta
+                        await onEvent(.reasoningDelta(reasoningDelta))
+                    }
+                }
+
+                guard let rawContentDelta = choice.delta.content, !rawContentDelta.isEmpty else {
+                    continue
+                }
+
+                let parsedDelta = parser.consume(rawContentDelta)
+                if request.showsReasoning, !parsedDelta.reasoningDelta.isEmpty {
+                    reasoning += parsedDelta.reasoningDelta
+                    await onEvent(.reasoningDelta(parsedDelta.reasoningDelta))
+                }
+                if !parsedDelta.contentDelta.isEmpty {
+                    content += parsedDelta.contentDelta
+                    await onEvent(.contentDelta(parsedDelta.contentDelta))
+                }
+            }
+        }
+
+        let finalDelta = parser.finish()
+        if request.showsReasoning, !finalDelta.reasoningDelta.isEmpty {
+            reasoning += finalDelta.reasoningDelta
+            await onEvent(.reasoningDelta(finalDelta.reasoningDelta))
+        }
+        if !finalDelta.contentDelta.isEmpty {
+            content += finalDelta.contentDelta
+            await onEvent(.contentDelta(finalDelta.contentDelta))
+        }
+
+        return ChatGenerationResult(
+            content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+            reasoning: request.showsReasoning ? reasoning.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        )
+    }
+
+    private func generateRaw(request: ChatGenerationRequest) async throws -> String {
+        let decoded = try await generateChatCompletionResponse(request: request)
         guard let content = decoded.choices.first?.message.content, !content.isEmpty else {
             throw AppError.cleanupFailed(details: "llama-server returned an empty response.")
         }
 
         return content
+    }
+
+    private func generateChatCompletionResponse(request: ChatGenerationRequest) async throws -> ChatCompletionResponse {
+        try await prepare()
+
+        let (data, response) = try await session.data(for: chatCompletionURLRequest(request: request, stream: false))
+        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
+            let detail = String(data: data, encoding: .utf8) ?? "No response body."
+            throw AppError.cleanupFailed(details: "llama-server generation failed: \(detail)")
+        }
+
+        return try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+    }
+
+    private func chatCompletionURLRequest(request chatRequest: ChatGenerationRequest, stream: Bool) throws -> URLRequest {
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(ChatCompletionRequest(
+            messages: chatRequest.messages.map { message in
+                ChatCompletionMessage(role: message.role.rawValue, content: message.content)
+            },
+            temperature: chatRequest.temperature,
+            topP: chatRequest.topP,
+            maxTokens: chatRequest.maxTokens,
+            stream: stream
+        ))
+
+        return urlRequest
     }
 
     private var baseURL: URL {
@@ -250,25 +359,46 @@ actor LlamaServerTextGenerationEngine: LocalTextGenerationEngine {
         }
         return environment
     }
+
+    private static func serverSentEventPayload(from line: String) -> String? {
+        guard line.hasPrefix("data:") else {
+            return nil
+        }
+
+        return line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func collectStreamingErrorBody(from bytes: URLSession.AsyncBytes) async throws -> String {
+        var body = ""
+        for try await line in bytes.lines {
+            body += line
+            body += "\n"
+        }
+
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "No response body." : trimmed
+    }
 }
 
 private struct ChatCompletionRequest: Encodable {
-    let messages: [Message]
+    let messages: [ChatCompletionMessage]
     let temperature: Double
     let topP: Double
     let maxTokens: Int
+    let stream: Bool
 
     enum CodingKeys: String, CodingKey {
         case messages
         case temperature
         case topP = "top_p"
         case maxTokens = "max_tokens"
+        case stream
     }
+}
 
-    struct Message: Encodable {
-        let role: String
-        let content: String
-    }
+private struct ChatCompletionMessage: Encodable {
+    let role: String
+    let content: String
 }
 
 private struct ChatCompletionResponse: Decodable {
@@ -280,5 +410,41 @@ private struct ChatCompletionResponse: Decodable {
 
     struct Message: Decodable {
         let content: String
+        let reasoning: String?
+        let reasoningContent: String?
+
+        var reasoningText: String? {
+            reasoningContent ?? reasoning
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case content
+            case reasoning
+            case reasoningContent = "reasoning_content"
+        }
+    }
+}
+
+private struct StreamingChatCompletionChunk: Decodable {
+    let choices: [Choice]
+
+    struct Choice: Decodable {
+        let delta: Delta
+    }
+
+    struct Delta: Decodable {
+        let content: String?
+        let reasoning: String?
+        let reasoningContent: String?
+
+        var reasoningText: String? {
+            reasoningContent ?? reasoning
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case content
+            case reasoning
+            case reasoningContent = "reasoning_content"
+        }
     }
 }

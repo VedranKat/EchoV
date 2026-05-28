@@ -14,6 +14,18 @@ final class GemmaPrimeTextCleanupEngineTests: XCTestCase {
         XCTAssertEqual(cleaned.text, "What should I do next?")
     }
 
+    func testStripsReasoningFromModelOutput() async throws {
+        let model = StubLocalTextGenerationEngine(output: "<think>Hidden cleanup reasoning.</think>\nCleaned text.")
+        let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)
+
+        let cleaned = try await engine.clean(
+            Transcript(text: "clean this"),
+            level: .balanced
+        )
+
+        XCTAssertEqual(cleaned.text, "Cleaned text.")
+    }
+
     func testPromptIncludesRawTranscript() async throws {
         let model = StubLocalTextGenerationEngine(output: "Cleaned")
         let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)
@@ -41,7 +53,7 @@ private actor StubLocalTextGenerationEngine: LocalTextGenerationEngine {
     let id = "stub"
     let displayName = "Stub"
     let output: String
-    private(set) var lastPrompt: PrimeCleanupPrompt?
+    private(set) var lastPrompt: LocalChatPrompt?
 
     init(output: String) {
         self.output = output
@@ -49,7 +61,7 @@ private actor StubLocalTextGenerationEngine: LocalTextGenerationEngine {
 
     func prepare() async throws {}
 
-    func generate(prompt: PrimeCleanupPrompt) async throws -> String {
+    func generate(prompt: LocalChatPrompt) async throws -> String {
         lastPrompt = prompt
         return output
     }

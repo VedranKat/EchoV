@@ -6,10 +6,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let container = AppContainer.bootstrap()
 
     private var menuBarController: MenuBarController?
+    private var textResponseWindowController: TextResponseWindowController?
+    private var textResponseNotificationService: TextResponseNotificationService?
     private var isTerminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        let textResponseWindowController = TextResponseWindowController(container: container)
+        self.textResponseWindowController = textResponseWindowController
+        textResponseNotificationService = TextResponseNotificationService { sessionID in
+            textResponseWindowController.show(sessionID: sessionID)
+        }
+        container.setTextResponseSessionCreatedHandler { [weak self] sessionID, title, responseText in
+            self?.textResponseNotificationService?.post(
+                sessionID: sessionID,
+                title: title,
+                responseText: responseText
+            )
+        }
         menuBarController = MenuBarController(container: container)
         container.start()
     }

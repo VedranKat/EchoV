@@ -10,12 +10,14 @@ final class AppContainer {
         static let voiceGate = UInt32(3)
         static let primeToggle = UInt32(4)
         static let voiceGateVerifierToggle = UInt32(5)
+        static let voiceModeActivation = UInt32(6)
     }
 
     private enum RecordingTrigger {
         case toggle
         case pushToTalk
         case voiceGate
+        case voiceMode
     }
 
     let appState: AppState
@@ -30,12 +32,16 @@ final class AppContainer {
     let temporaryAudioStore: TemporaryAudioStore
     let licensesStore: LicensesStore
     let speakerProfileStore: SpeakerProfileStore
+    let textResponseSessions: TextResponseSessionStore
 
     private let hotkeyService: any HotkeyService
     private let voiceGateCapture: VoiceActivatedAudioCapture
+    private let voiceModeController: VoiceModeController
     private let speakerVerificationService: any SpeakerVerificationService
     private let voiceGateVerificationWindows: AudioWindowExtractor
     private let voiceProfileEnrollmentRecorder: any AudioRecorder
+    private let textResponseSessionNotifier: TextResponseSessionNotifier
+    private var localTextGenerationEngine: any LocalTextGenerationEngine
     private var hasStarted = false
     private var recordingTrigger: RecordingTrigger?
     private var isVoiceGateArmed = false
@@ -56,11 +62,15 @@ final class AppContainer {
         temporaryAudioStore: TemporaryAudioStore,
         licensesStore: LicensesStore,
         speakerProfileStore: SpeakerProfileStore,
+        textResponseSessions: TextResponseSessionStore,
         hotkeyService: any HotkeyService,
         voiceGateCapture: VoiceActivatedAudioCapture,
+        voiceModeController: VoiceModeController,
         speakerVerificationService: any SpeakerVerificationService,
         voiceGateVerificationWindows: AudioWindowExtractor,
-        voiceProfileEnrollmentRecorder: any AudioRecorder
+        voiceProfileEnrollmentRecorder: any AudioRecorder,
+        textResponseSessionNotifier: TextResponseSessionNotifier,
+        localTextGenerationEngine: any LocalTextGenerationEngine
     ) {
         self.appState = appState
         self.permissionState = permissionState
@@ -74,11 +84,15 @@ final class AppContainer {
         self.temporaryAudioStore = temporaryAudioStore
         self.licensesStore = licensesStore
         self.speakerProfileStore = speakerProfileStore
+        self.textResponseSessions = textResponseSessions
         self.hotkeyService = hotkeyService
         self.voiceGateCapture = voiceGateCapture
+        self.voiceModeController = voiceModeController
         self.speakerVerificationService = speakerVerificationService
         self.voiceGateVerificationWindows = voiceGateVerificationWindows
         self.voiceProfileEnrollmentRecorder = voiceProfileEnrollmentRecorder
+        self.textResponseSessionNotifier = textResponseSessionNotifier
+        self.localTextGenerationEngine = localTextGenerationEngine
     }
 
     static func bootstrap() -> AppContainer {
@@ -92,6 +106,8 @@ final class AppContainer {
         let historyStore = TranscriptHistoryStore()
         let temporaryAudioStore = TemporaryAudioStore()
         let licensesStore = LicensesStore()
+        let textResponseSessions = TextResponseSessionStore()
+        let textResponseSessionNotifier = TextResponseSessionNotifier()
 
         let pipeline = DictationPipeline(
             appState: appState,
@@ -117,7 +133,34 @@ final class AppContainer {
             onStateChanged: { appState.notifyStatusChanged() }
         )
 
-        return AppContainer(
+        let localTextGenerationEngine = UnconfiguredLocalTextGenerationEngine()
+        let voiceModeController = VoiceModeController(
+            appState: appState,
+            capture: VoiceActivatedAudioCapture(
+                microphonePermission: microphonePermission,
+                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
+            ),
+            pipeline: pipeline,
+            textGenerationEngine: localTextGenerationEngine,
+            speechOutput: KokoroSpeechOutputService(),
+            responsePauseSeconds: { settings.voiceModeResponsePauseSeconds },
+            noSpeechTimeoutSeconds: { settings.voiceModeNoSpeechTimeoutSeconds },
+            responseDelivery: { settings.voiceModeResponseDelivery },
+            speechVoiceIdentifier: { settings.voiceModeKokoroVoiceIdentifier },
+            speechSpeed: { settings.voiceModeKokoroSpeed },
+            onTextResponse: { userText, responseText in
+                let sessionID = textResponseSessions.startSession(userText: userText, responseText: responseText)
+                textResponseSessionNotifier.sessionCreated(
+                    id: sessionID,
+                    title: textResponseSessions.selectedSession?.title ?? "Text response",
+                    responseText: responseText
+                )
+            },
+            onStopped: {},
+            onStateChanged: { appState.notifyStatusChanged() }
+        )
+
+        let container = AppContainer(
             appState: appState,
             permissionState: permissionState,
             settings: settings,
@@ -130,19 +173,27 @@ final class AppContainer {
             temporaryAudioStore: temporaryAudioStore,
             licensesStore: licensesStore,
             speakerProfileStore: SpeakerProfileStore(),
+            textResponseSessions: textResponseSessions,
             hotkeyService: CarbonHotkeyService(),
             voiceGateCapture: VoiceActivatedAudioCapture(
                 microphonePermission: microphonePermission,
                 selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
             ),
+            voiceModeController: voiceModeController,
             speakerVerificationService: ONNXSpeakerVerificationService(),
             voiceGateVerificationWindows: AudioWindowExtractor(),
             voiceProfileEnrollmentRecorder: AVFoundationAudioRecorder(
                 microphonePermission: microphonePermission,
                 minimumDuration: 3,
                 selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
-            )
+            ),
+            textResponseSessionNotifier: textResponseSessionNotifier,
+            localTextGenerationEngine: localTextGenerationEngine
         )
+        voiceModeController.setOnStopped { [weak container] in
+            container?.recordingTrigger = nil
+        }
+        return container
     }
 
     func start() {
@@ -158,6 +209,9 @@ final class AppContainer {
             }
             configureASREngineFromSelectedModel()
             configurePostProcessingEngineFromSelectedModel()
+            if settings.isVoiceModeEnabled {
+                await startVoiceModeIfPossible()
+            }
         }
 
         registerHotkeys()
@@ -167,12 +221,14 @@ final class AppContainer {
         hasStarted = false
         hotkeyService.unregister()
         voiceGateCapture.stop()
+        voiceModeController.stop()
         if isVoiceProfileEnrollmentRecording {
             _ = try? await voiceProfileEnrollmentRecorder.stop()
             isVoiceProfileEnrollmentRecording = false
             voiceProfileEnrollmentRecording = nil
         }
         await pipeline.shutdownCleanupEngine()
+        await localTextGenerationEngine.shutdown()
     }
 
     func setToggleHotkey(_ binding: HotkeyBinding?) {
@@ -252,6 +308,16 @@ final class AppContainer {
         }
 
         settings.voiceGateVerifierToggleHotkey = binding
+        registerHotkeys()
+    }
+
+    func setVoiceModeActivationHotkey(_ binding: HotkeyBinding?) {
+        guard isHotkeyAvailable(binding, excluding: \.voiceModeActivationHotkey) else {
+            appState.lastError = .hotkeyUnavailable(details: "Voice Mode cannot use the same hotkey as another EchoV shortcut.")
+            return
+        }
+
+        settings.voiceModeActivationHotkey = binding
         registerHotkeys()
     }
 
@@ -424,6 +490,141 @@ final class AppContainer {
         configurePostProcessingEngineFromSelectedModel()
     }
 
+    func setVoiceModeEnabled(_ isEnabled: Bool) {
+        settings.isVoiceModeEnabled = isEnabled
+
+        if isEnabled {
+            configurePostProcessingEngineFromSelectedModel()
+            Task {
+                await startVoiceModeIfPossible()
+            }
+        } else {
+            voiceModeController.stop()
+            configurePostProcessingEngineFromSelectedModel()
+        }
+    }
+
+    func setVoiceModeResponseBackend(_ backend: VoiceModeResponseBackend) {
+        settings.voiceModeResponseBackend = backend
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func setVoiceModeResponseDelivery(_ delivery: VoiceModeResponseDelivery) {
+        settings.voiceModeResponseDelivery = delivery
+    }
+
+    func setTextResponseSessionCreatedHandler(_ handler: @escaping (UUID, String, String) -> Void) {
+        textResponseSessionNotifier.onSessionCreated = handler
+    }
+
+    func availableSpeechVoices() -> [SpeechVoice] {
+        voiceModeController.availableSpeechVoices
+    }
+
+    func continueTextResponseSession(sessionID: UUID, userText: String) async {
+        let trimmedText = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            return
+        }
+
+        guard !textResponseSessions.isGenerating(sessionID: sessionID) else {
+            return
+        }
+
+        textResponseSessions.appendUserMessage(sessionID: sessionID, text: trimmedText)
+        let messages = textResponseSessions.messages(for: sessionID)
+        let policy = ChatGenerationPolicy.chat(
+            stream: settings.textResponseStreamsReplies,
+            showReasoning: settings.textResponseShowsReasoning
+        )
+        let request = TextResponseSessionPrompt(messages: messages).chatGenerationRequest(policy: policy)
+
+        do {
+            if request.prefersStreaming {
+                try await continueTextResponseSessionStreaming(
+                    sessionID: sessionID,
+                    request: request
+                )
+                return
+            }
+
+            let response = try await currentVoiceModeTextGenerationEngine().generate(request: request)
+            let trimmedResponse = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedResponse.isEmpty else {
+                throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty chat response.")
+            }
+
+            textResponseSessions.appendAssistantMessage(
+                sessionID: sessionID,
+                text: trimmedResponse,
+                reasoning: settings.textResponseShowsReasoning ? response.reasoning : ""
+            )
+        } catch let error as AppError {
+            textResponseSessions.setError(error.userMessage, sessionID: sessionID)
+            appState.lastError = error
+            appState.lastDetail = error.userMessage
+            appState.notifyStatusChanged()
+        } catch {
+            textResponseSessions.setError(error.localizedDescription, sessionID: sessionID)
+            appState.lastError = .voiceModeResponseFailed(details: error.localizedDescription)
+            appState.lastDetail = "Text response failed."
+            appState.notifyStatusChanged()
+        }
+    }
+
+    private func continueTextResponseSessionStreaming(
+        sessionID: UUID,
+        request: ChatGenerationRequest
+    ) async throws {
+        guard let messageID = textResponseSessions.startAssistantStreamingMessage(sessionID: sessionID) else {
+            throw AppError.voiceModeResponseFailed(details: "Could not start a streaming chat response.")
+        }
+
+        do {
+            let response = try await currentVoiceModeTextGenerationEngine().stream(request: request) { [weak self] event in
+                switch event {
+                case .contentDelta(let delta):
+                    self?.textResponseSessions.appendAssistantContentDelta(
+                        sessionID: sessionID,
+                        messageID: messageID,
+                        delta: delta
+                    )
+                case .reasoningDelta(let delta):
+                    self?.textResponseSessions.appendAssistantReasoningDelta(
+                        sessionID: sessionID,
+                        messageID: messageID,
+                        delta: delta
+                    )
+                }
+            }
+            let trimmedResponse = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedResponse.isEmpty else {
+                throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty chat response.")
+            }
+
+            textResponseSessions.finishAssistantStreamingMessage(
+                sessionID: sessionID,
+                messageID: messageID,
+                finalContent: trimmedResponse,
+                finalReasoning: settings.textResponseShowsReasoning ? response.reasoning : ""
+            )
+        } catch let error as AppError {
+            textResponseSessions.failAssistantStreamingMessage(
+                sessionID: sessionID,
+                messageID: messageID,
+                error: error.userMessage
+            )
+            throw error
+        } catch {
+            textResponseSessions.failAssistantStreamingMessage(
+                sessionID: sessionID,
+                messageID: messageID,
+                error: error.localizedDescription
+            )
+            throw error
+        }
+    }
+
     func togglePostProcessingEnabledFromHotkey() {
         setPostProcessingEnabled(!settings.isPostProcessingEnabled)
         appState.lastDetail = settings.isPostProcessingEnabled ? "Prime enabled." : "Prime disabled."
@@ -538,55 +739,109 @@ final class AppContainer {
     }
 
     private func configurePostProcessingEngineFromSelectedModel() {
-        guard
-            settings.isPostProcessingEnabled,
+        let previousTextGenerationEngine = localTextGenerationEngine
+        let shouldKeepLocalTextModelReady =
+            settings.isPostProcessingEnabled
+            || (settings.isVoiceModeEnabled && settings.voiceModeResponseBackend == .localLlama)
+        let hasValidLocalTextModel =
+            modelStore.selectedLlamaRuntime?.validation.isValid == true
+            && modelStore.selectedPostProcessingModel?.validation.isValid == true
+        let configuredEngine: any LocalTextGenerationEngine
+
+        if
+            shouldKeepLocalTextModelReady,
+            hasValidLocalTextModel,
             let runtime = modelStore.selectedLlamaRuntime,
-            runtime.validation.isValid,
-            let selection = modelStore.selectedPostProcessingModel,
-            selection.validation.isValid
-        else {
-            pipeline.setCleanupEngine(
-                GemmaPrimeTextCleanupEngine(
-                    textGenerationEngine: UnconfiguredLocalTextGenerationEngine()
-                )
+            let selection = modelStore.selectedPostProcessingModel
+        {
+            configuredEngine = Gemma4LocalTextGenerationEngine(
+                modelURL: selection.url,
+                runtimeURL: runtime.url
             )
-            return
+        } else {
+            configuredEngine = UnconfiguredLocalTextGenerationEngine()
         }
 
+        localTextGenerationEngine = configuredEngine
+        Task {
+            await previousTextGenerationEngine.shutdown()
+        }
+        voiceModeController.setTextGenerationEngine(
+            voiceModeTextGenerationEngine(localTextGenerationEngine: configuredEngine)
+        )
+        let cleanupTextGenerationEngine: any LocalTextGenerationEngine
+        if settings.isPostProcessingEnabled {
+            cleanupTextGenerationEngine = configuredEngine
+        } else {
+            cleanupTextGenerationEngine = UnconfiguredLocalTextGenerationEngine()
+        }
         pipeline.setCleanupEngine(
             GemmaPrimeTextCleanupEngine(
-                textGenerationEngine: Gemma4LocalTextGenerationEngine(
-                    modelURL: selection.url,
-                    runtimeURL: runtime.url
-                )
+                textGenerationEngine: cleanupTextGenerationEngine
             )
         )
 
-        if settings.isPostProcessingEnabled {
-            preloadPostProcessingModel()
+        if shouldKeepLocalTextModelReady, hasValidLocalTextModel {
+            preloadLocalTextGenerationModel(configuredEngine)
         }
     }
 
-    private func preloadPostProcessingModel() {
-        appState.lastDetail = "Loading post-processing model..."
-        DiagnosticLog.write("preloadPostProcessingModel started")
+    private func voiceModeTextGenerationEngine(
+        localTextGenerationEngine: any LocalTextGenerationEngine
+    ) -> any LocalTextGenerationEngine {
+        guard settings.isVoiceModeEnabled else {
+            return UnconfiguredLocalTextGenerationEngine()
+        }
+
+        switch settings.voiceModeResponseBackend {
+        case .localLlama:
+            return localTextGenerationEngine
+        case .openAICompatibleCloud:
+            let settings = settings
+            return OpenAICompatibleVoiceModeTextGenerationEngine(
+                baseURL: { settings.voiceModeCloudBaseURL },
+                model: { settings.voiceModeCloudModel },
+                apiKey: { settings.voiceModeCloudAPIKey },
+                proxySettings: { settings.proxySettings }
+            )
+        }
+    }
+
+    private func currentVoiceModeTextGenerationEngine() -> any LocalTextGenerationEngine {
+        switch settings.voiceModeResponseBackend {
+        case .localLlama:
+            return localTextGenerationEngine
+        case .openAICompatibleCloud:
+            let settings = settings
+            return OpenAICompatibleVoiceModeTextGenerationEngine(
+                baseURL: { settings.voiceModeCloudBaseURL },
+                model: { settings.voiceModeCloudModel },
+                apiKey: { settings.voiceModeCloudAPIKey },
+                proxySettings: { settings.proxySettings }
+            )
+        }
+    }
+
+    private func preloadLocalTextGenerationModel(_ engine: any LocalTextGenerationEngine) {
+        appState.lastDetail = "Loading local text model..."
+        DiagnosticLog.write("preloadLocalTextGenerationModel started")
         appState.notifyStatusChanged()
 
         Task {
             do {
-                try await pipeline.prepareCleanup()
-                DiagnosticLog.write("preloadPostProcessingModel completed")
-                appState.lastDetail = "Post-processing model ready."
+                try await engine.prepare()
+                DiagnosticLog.write("preloadLocalTextGenerationModel completed")
+                appState.lastDetail = "Local text model ready."
                 appState.notifyStatusChanged()
             } catch let error as AppError {
-                DiagnosticLog.write("preloadPostProcessingModel AppError: \(error.userMessage) details=\(error.technicalDetails ?? "none")")
+                DiagnosticLog.write("preloadLocalTextGenerationModel AppError: \(error.userMessage) details=\(error.technicalDetails ?? "none")")
                 appState.lastError = error
                 appState.lastDetail = error.userMessage
                 appState.notifyStatusChanged()
             } catch {
-                DiagnosticLog.write("preloadPostProcessingModel Error: \(error.localizedDescription)")
+                DiagnosticLog.write("preloadLocalTextGenerationModel Error: \(error.localizedDescription)")
                 appState.lastError = .cleanupFailed(details: error.localizedDescription)
-                appState.lastDetail = "Post-processing model failed to load."
+                appState.lastDetail = "Local text model failed to load."
                 appState.notifyStatusChanged()
             }
         }
@@ -623,7 +878,8 @@ final class AppContainer {
         var configuredHotkeys: [(String, HotkeyBinding?)] = [
             ("Toggle", settings.toggleHotkey),
             ("Push-to-talk", settings.pushToTalkHotkey),
-            ("Voice Gate", settings.voiceGateHotkey)
+            ("Voice Gate", settings.voiceGateHotkey),
+            ("Voice Mode", settings.voiceModeActivationHotkey)
         ]
 
         if includeUtilityHotkeys {
@@ -752,6 +1008,21 @@ final class AppContainer {
             )
         }
 
+        if let voiceModeActivationHotkey = settings.voiceModeActivationHotkey {
+            registrations.append(
+                HotkeyRegistration(
+                    id: HotkeyID.voiceModeActivation,
+                    binding: voiceModeActivationHotkey,
+                    onPressed: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.handleVoiceModeHotkey()
+                        }
+                    },
+                    onReleased: nil
+                )
+            )
+        }
+
         return registrations
     }
 
@@ -768,7 +1039,8 @@ final class AppContainer {
             \.pushToTalkHotkey,
             \.voiceGateHotkey,
             \.primeToggleHotkey,
-            \.voiceGateVerifierToggleHotkey
+            \.voiceGateVerifierToggleHotkey,
+            \.voiceModeActivationHotkey
         ]
 
         return bindings.allSatisfy { keyPath in
@@ -797,9 +1069,12 @@ final class AppContainer {
 
             await pipeline.stopTranscribeAndInsert()
             recordingTrigger = nil
+            await startVoiceModeAfterCurrentTaskIfNeeded()
         case .pushToTalk:
             return
         case .voiceGate:
+            return
+        case .voiceMode:
             return
         }
     }
@@ -848,6 +1123,7 @@ final class AppContainer {
 
         await pipeline.stopTranscribeAndInsert()
         recordingTrigger = nil
+        await startVoiceModeAfterCurrentTaskIfNeeded()
     }
 
     private func handleVoiceGateHotkey() async {
@@ -863,6 +1139,45 @@ final class AppContainer {
         isVoiceGateArmed = true
         recordingTrigger = .voiceGate
         await startVoiceGateListening()
+    }
+
+    private func handleVoiceModeHotkey() async {
+        guard settings.isVoiceModeEnabled else {
+            appState.lastError = .recordingFailed(details: "Enable Voice Mode before using its activation hotkey.")
+            appState.lastDetail = "Voice Mode is off."
+            appState.notifyStatusChanged()
+            return
+        }
+
+        guard recordingTrigger == nil || recordingTrigger == .voiceMode else {
+            return
+        }
+
+        recordingTrigger = .voiceMode
+        await voiceModeController.activateManually()
+    }
+
+    private func startVoiceModeIfPossible() async {
+        guard settings.isVoiceModeEnabled else {
+            return
+        }
+
+        guard recordingTrigger == nil, appState.state.canStartRecording else {
+            appState.lastDetail = "Voice Mode will start after the current task finishes."
+            appState.notifyStatusChanged()
+            return
+        }
+
+        recordingTrigger = .voiceMode
+        await voiceModeController.start()
+    }
+
+    private func startVoiceModeAfterCurrentTaskIfNeeded() async {
+        guard settings.isVoiceModeEnabled else {
+            return
+        }
+
+        await startVoiceModeIfPossible()
     }
 
     private enum PushToTalkMicrophonePreparation {
@@ -919,7 +1234,7 @@ final class AppContainer {
         do {
             try await voiceGateCapture.start(
                 configuration: VoiceGateCaptureConfiguration(
-                    silenceTimeout: settings.voiceGateSilenceTimeout,
+                    silenceTimeoutSeconds: settings.voiceGateSilenceTimeout.seconds,
                     sensitivity: settings.voiceGateSensitivity
                 ),
                 onSpeechStarted: { [weak self] startedAt in
@@ -1077,13 +1392,32 @@ final class AppContainer {
         switch appState.state {
         case .listening, .voiceGateRecording:
             setState(.cancelled)
-        case .idle, .recording, .transcribing, .cleaning, .inserting, .completed, .failed, .cancelled:
+        case .idle,
+             .recording,
+             .voiceModeWakeListening,
+             .voiceModeCheckingWakePhrase,
+             .voiceModePromptListening,
+             .voiceModePromptRecording,
+             .voiceModeThinking,
+             .voiceModeSpeaking,
+             .transcribing,
+             .cleaning,
+             .inserting,
+             .completed,
+             .failed,
+             .cancelled:
             break
         }
 
         recordingTrigger = nil
         appState.lastDetail = "Voice Gate is muted."
         appState.notifyStatusChanged()
+
+        if settings.isVoiceModeEnabled {
+            Task {
+                await startVoiceModeIfPossible()
+            }
+        }
     }
 
     private func setState(_ state: DictationState) {
@@ -1097,16 +1431,39 @@ private extension DictationState {
         switch self {
         case .idle, .completed, .failed, .cancelled:
             true
-        case .listening, .recording, .voiceGateRecording, .transcribing, .cleaning, .inserting:
+        case .listening,
+             .recording,
+             .voiceGateRecording,
+             .voiceModeWakeListening,
+             .voiceModeCheckingWakePhrase,
+             .voiceModePromptListening,
+             .voiceModePromptRecording,
+             .voiceModeThinking,
+             .voiceModeSpeaking,
+             .transcribing,
+             .cleaning,
+             .inserting:
             false
         }
     }
 
     var isRecording: Bool {
         switch self {
-        case .recording, .voiceGateRecording:
+        case .recording, .voiceGateRecording, .voiceModePromptRecording:
             return true
-        case .idle, .listening, .transcribing, .cleaning, .inserting, .completed, .failed, .cancelled:
+        case .idle,
+             .listening,
+             .voiceModeWakeListening,
+             .voiceModeCheckingWakePhrase,
+             .voiceModePromptListening,
+             .voiceModeThinking,
+             .voiceModeSpeaking,
+             .transcribing,
+             .cleaning,
+             .inserting,
+             .completed,
+             .failed,
+             .cancelled:
             return false
         }
     }

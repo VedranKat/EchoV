@@ -36,6 +36,12 @@ final class AppSettings {
         }
     }
 
+    var voiceModeActivationHotkey: HotkeyBinding? {
+        didSet {
+            saveHotkey(voiceModeActivationHotkey, forKey: Keys.voiceModeActivationHotkey)
+        }
+    }
+
     var isHistoryEnabled: Bool {
         didSet {
             userDefaults.set(isHistoryEnabled, forKey: Keys.isHistoryEnabled)
@@ -103,6 +109,78 @@ final class AppSettings {
     var voiceGateSpeakerVerificationMode: VoiceGateSpeakerVerificationMode {
         didSet {
             userDefaults.set(voiceGateSpeakerVerificationMode.rawValue, forKey: Keys.voiceGateSpeakerVerificationMode)
+        }
+    }
+
+    var isVoiceModeEnabled: Bool {
+        didSet {
+            userDefaults.set(isVoiceModeEnabled, forKey: Keys.isVoiceModeEnabled)
+        }
+    }
+
+    var voiceModeResponsePauseSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(voiceModeResponsePauseSeconds, forKey: Keys.voiceModeResponsePauseSeconds)
+        }
+    }
+
+    var voiceModeNoSpeechTimeoutSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(voiceModeNoSpeechTimeoutSeconds, forKey: Keys.voiceModeNoSpeechTimeoutSeconds)
+        }
+    }
+
+    var voiceModeResponseBackend: VoiceModeResponseBackend {
+        didSet {
+            userDefaults.set(voiceModeResponseBackend.rawValue, forKey: Keys.voiceModeResponseBackend)
+        }
+    }
+
+    var voiceModeResponseDelivery: VoiceModeResponseDelivery {
+        didSet {
+            userDefaults.set(voiceModeResponseDelivery.rawValue, forKey: Keys.voiceModeResponseDelivery)
+        }
+    }
+
+    var textResponseStreamsReplies: Bool {
+        didSet {
+            userDefaults.set(textResponseStreamsReplies, forKey: Keys.textResponseStreamsReplies)
+        }
+    }
+
+    var textResponseShowsReasoning: Bool {
+        didSet {
+            userDefaults.set(textResponseShowsReasoning, forKey: Keys.textResponseShowsReasoning)
+        }
+    }
+
+    var voiceModeCloudBaseURL: String {
+        didSet {
+            userDefaults.set(voiceModeCloudBaseURL, forKey: Keys.voiceModeCloudBaseURL)
+        }
+    }
+
+    var voiceModeCloudModel: String {
+        didSet {
+            userDefaults.set(voiceModeCloudModel, forKey: Keys.voiceModeCloudModel)
+        }
+    }
+
+    var voiceModeCloudAPIKey: String {
+        didSet {
+            VoiceModeCloudAPIKeyStore.save(voiceModeCloudAPIKey)
+        }
+    }
+
+    var voiceModeKokoroVoiceIdentifier: String {
+        didSet {
+            userDefaults.set(voiceModeKokoroVoiceIdentifier, forKey: Keys.voiceModeKokoroVoiceIdentifier)
+        }
+    }
+
+    var voiceModeKokoroSpeed: Double {
+        didSet {
+            userDefaults.set(voiceModeKokoroSpeed, forKey: Keys.voiceModeKokoroSpeed)
         }
     }
 
@@ -181,6 +259,10 @@ final class AppSettings {
             migratingDefaultFrom: .legacyDefaultVoiceGateVerifierToggle,
             to: .defaultVoiceGateVerifierToggle
         ) ?? .defaultVoiceGateVerifierToggle
+        self.voiceModeActivationHotkey = Self.loadHotkey(
+            forKey: Keys.voiceModeActivationHotkey,
+            from: userDefaults
+        ) ?? .defaultVoiceModeActivation
         self.isHistoryEnabled = userDefaults.object(forKey: Keys.isHistoryEnabled) as? Bool ?? true
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
         self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
@@ -192,6 +274,34 @@ final class AppSettings {
         self.isVoiceGateSpeakerMatchEnabled = userDefaults.object(forKey: Keys.isVoiceGateSpeakerMatchEnabled) as? Bool ?? false
         self.voiceGateSpeakerMatchStrictness = Self.loadVoiceGateSpeakerMatchStrictness(from: userDefaults)
         self.voiceGateSpeakerVerificationMode = Self.loadVoiceGateSpeakerVerificationMode(from: userDefaults)
+        self.isVoiceModeEnabled = userDefaults.object(forKey: Keys.isVoiceModeEnabled) as? Bool ?? false
+        self.voiceModeResponsePauseSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.voiceModeResponsePauseSeconds,
+            defaultValue: 1.2,
+            range: 0.5...3.0
+        )
+        self.voiceModeNoSpeechTimeoutSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.voiceModeNoSpeechTimeoutSeconds,
+            defaultValue: 8.0,
+            range: 3.0...15.0
+        )
+        self.voiceModeResponseBackend = Self.loadVoiceModeResponseBackend(from: userDefaults)
+        self.voiceModeResponseDelivery = Self.loadVoiceModeResponseDelivery(from: userDefaults)
+        self.textResponseStreamsReplies = userDefaults.object(forKey: Keys.textResponseStreamsReplies) as? Bool ?? true
+        self.textResponseShowsReasoning = userDefaults.object(forKey: Keys.textResponseShowsReasoning) as? Bool ?? false
+        self.voiceModeCloudBaseURL = userDefaults.string(forKey: Keys.voiceModeCloudBaseURL) ?? ""
+        self.voiceModeCloudModel = userDefaults.string(forKey: Keys.voiceModeCloudModel) ?? ""
+        self.voiceModeCloudAPIKey = VoiceModeCloudAPIKeyStore.load()
+        self.voiceModeKokoroVoiceIdentifier = userDefaults.string(forKey: Keys.voiceModeKokoroVoiceIdentifier)
+            ?? KokoroVoiceCatalog.defaultVoiceID
+        self.voiceModeKokoroSpeed = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.voiceModeKokoroSpeed,
+            defaultValue: 1.0,
+            range: 0.5...2.0
+        )
         self.isProxyEnabled = userDefaults.object(forKey: Keys.isProxyEnabled) as? Bool ?? false
         self.httpProxyHost = userDefaults.string(forKey: Keys.httpProxyHost) ?? ""
         self.httpProxyPort = userDefaults.string(forKey: Keys.httpProxyPort) ?? ""
@@ -207,6 +317,7 @@ final class AppSettings {
         voiceGateHotkey = .defaultVoiceGate
         primeToggleHotkey = .defaultPrimeToggle
         voiceGateVerifierToggleHotkey = .defaultVoiceGateVerifierToggle
+        voiceModeActivationHotkey = .defaultVoiceModeActivation
     }
 
     func resetDictationHotkeysToDefaults() {
@@ -318,6 +429,41 @@ final class AppSettings {
         return mode
     }
 
+    private static func loadVoiceModeResponseBackend(from userDefaults: UserDefaults) -> VoiceModeResponseBackend {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.voiceModeResponseBackend),
+            let backend = VoiceModeResponseBackend(rawValue: rawValue)
+        else {
+            return .localLlama
+        }
+
+        return backend
+    }
+
+    private static func loadVoiceModeResponseDelivery(from userDefaults: UserDefaults) -> VoiceModeResponseDelivery {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.voiceModeResponseDelivery),
+            let delivery = VoiceModeResponseDelivery(rawValue: rawValue)
+        else {
+            return .spoken
+        }
+
+        return delivery
+    }
+
+    private static func loadClampedDouble(
+        from userDefaults: UserDefaults,
+        key: String,
+        defaultValue: Double,
+        range: ClosedRange<Double>
+    ) -> Double {
+        guard userDefaults.object(forKey: key) != nil else {
+            return defaultValue
+        }
+
+        return min(max(userDefaults.double(forKey: key), range.lowerBound), range.upperBound)
+    }
+
     private func applyProxyEnvironment() {
         ProxyEnvironment.apply(proxySettings)
     }
@@ -329,6 +475,7 @@ private enum Keys {
     static let voiceGateHotkey = "settings.voiceGateHotkey"
     static let primeToggleHotkey = "settings.primeToggleHotkey"
     static let voiceGateVerifierToggleHotkey = "settings.voiceGateVerifierToggleHotkey"
+    static let voiceModeActivationHotkey = "settings.voiceModeActivationHotkey"
     static let isHistoryEnabled = "settings.isHistoryEnabled"
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
     static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
@@ -340,6 +487,17 @@ private enum Keys {
     static let isVoiceGateSpeakerMatchEnabled = "settings.isVoiceGateSpeakerMatchEnabled"
     static let voiceGateSpeakerMatchStrictness = "settings.voiceGateSpeakerMatchStrictness"
     static let voiceGateSpeakerVerificationMode = "settings.voiceGateSpeakerVerificationMode"
+    static let isVoiceModeEnabled = "settings.isVoiceModeEnabled"
+    static let voiceModeResponsePauseSeconds = "settings.voiceModeResponsePauseSeconds"
+    static let voiceModeNoSpeechTimeoutSeconds = "settings.voiceModeNoSpeechTimeoutSeconds"
+    static let voiceModeResponseBackend = "settings.voiceModeResponseBackend"
+    static let voiceModeResponseDelivery = "settings.voiceModeResponseDelivery"
+    static let textResponseStreamsReplies = "settings.textResponseStreamsReplies"
+    static let textResponseShowsReasoning = "settings.textResponseShowsReasoning"
+    static let voiceModeCloudBaseURL = "settings.voiceModeCloudBaseURL"
+    static let voiceModeCloudModel = "settings.voiceModeCloudModel"
+    static let voiceModeKokoroVoiceIdentifier = "settings.voiceModeKokoroVoiceIdentifier"
+    static let voiceModeKokoroSpeed = "settings.voiceModeKokoroSpeed"
     static let isProxyEnabled = "settings.isProxyEnabled"
     static let httpProxyHost = "settings.httpProxyHost"
     static let httpProxyPort = "settings.httpProxyPort"

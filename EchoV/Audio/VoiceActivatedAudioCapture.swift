@@ -3,7 +3,7 @@ import AVFoundation
 import Foundation
 
 struct VoiceGateCaptureConfiguration {
-    let silenceTimeout: VoiceGateSilenceTimeout
+    let silenceTimeoutSeconds: TimeInterval
     let sensitivity: VoiceGateSensitivity
 }
 
@@ -257,7 +257,7 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
             return
         }
 
-        if receivedAt.timeIntervalSince(lastSpeechAt) >= configuration.silenceTimeout.seconds {
+        if receivedAt.timeIntervalSince(lastSpeechAt) >= configuration.silenceTimeoutSeconds {
             finishUtterance(endedAt: receivedAt)
         }
     }
