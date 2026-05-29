@@ -52,7 +52,7 @@ enum AppError: LocalizedError, Equatable {
         case .cleanupModelNotConfigured:
             "Select a local text model before generating text."
         case .cleanupFailed:
-            "Prime cleanup failed."
+            "Text cleanup failed."
         case .voiceModeResponseNotConfigured:
             "Configure the Voice Mode cloud response provider before using it."
         case .voiceModeResponseFailed:

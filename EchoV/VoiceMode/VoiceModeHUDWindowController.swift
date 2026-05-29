@@ -3,6 +3,11 @@ import SwiftUI
 
 @MainActor
 final class VoiceModeHUDWindowController {
+    private enum Metrics {
+        static let windowSize = NSSize(width: 380, height: 62)
+        static let margin: CGFloat = 18
+    }
+
     private let container: AppContainer
     private var window: NSPanel?
     private var observerID: UUID?
@@ -43,7 +48,6 @@ final class VoiceModeHUDWindowController {
             return
         }
 
-        position(window)
         window.orderFrontRegardless()
 
         if isTerminalState {
@@ -62,7 +66,7 @@ final class VoiceModeHUDWindowController {
             .environment(container)
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 390, height: 104),
+            contentRect: NSRect(origin: .zero, size: Metrics.windowSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -72,6 +76,7 @@ final class VoiceModeHUDWindowController {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
+        panel.isMovableByWindowBackground = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.contentView = NSHostingView(rootView: rootView)
         position(panel)
@@ -79,14 +84,12 @@ final class VoiceModeHUDWindowController {
     }
 
     private func position(_ window: NSWindow) {
-        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 390, height: 104)
-        let margin: CGFloat = 20
-        let size = NSSize(width: 390, height: 104)
+        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(origin: .zero, size: Metrics.windowSize)
         let origin = NSPoint(
-            x: visibleFrame.maxX - size.width - margin,
-            y: visibleFrame.maxY - size.height - margin
+            x: visibleFrame.maxX - Metrics.windowSize.width - Metrics.margin,
+            y: visibleFrame.maxY - Metrics.windowSize.height - Metrics.margin
         )
-        window.setFrame(NSRect(origin: origin, size: size), display: false)
+        window.setFrame(NSRect(origin: origin, size: Metrics.windowSize), display: false)
     }
 
     private func currentHUDState() -> DictationState? {
@@ -135,21 +138,27 @@ private struct VoiceModeHUDView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .frame(width: 10)
+                .help("Drag to move")
+
             ZStack {
                 Circle()
-                    .fill(tone.color.opacity(0.16))
-                    .frame(width: 44, height: 44)
+                    .fill(tone.color.opacity(0.14))
+                    .frame(width: 30, height: 30)
 
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(tone.color)
             }
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
                     Text(title)
-                        .font(.headline)
+                        .font(.callout.weight(.semibold))
                         .lineLimit(1)
 
                     StatusBadge(text: badge, tone: tone)
@@ -158,39 +167,42 @@ private struct VoiceModeHUDView: View {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
-            VStack(alignment: .trailing, spacing: 8) {
-                let backend = container.voiceModeBackendIndicator()
-                VoiceModeBackendIndicator(
-                    title: backend.title,
-                    subtitle: backend.subtitle,
-                    isCloud: backend.isCloud
-                )
+            let backend = container.voiceModeBackendIndicator()
+            VoiceModeBackendIndicator(
+                title: backend.title,
+                subtitle: backend.subtitle,
+                isCloud: backend.isCloud,
+                style: .compact
+            )
 
-                Button {
-                    Task {
-                        await container.stopActiveWork()
-                    }
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .frame(width: 22, height: 22)
+            Button {
+                Task {
+                    await container.stopActiveWork()
                 }
-                .buttonStyle(.borderless)
-                .help("Stop EchoV")
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 24, height: 24)
             }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .help("Stop EchoV")
         }
-        .padding(14)
-        .frame(width: 390, height: 104)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .frame(width: 380, height: 62)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.separator.opacity(SettingsTheme.separatorOpacity(for: colorScheme)))
         }
+        .contentShape(Rectangle())
     }
 
     private var title: String {
@@ -235,7 +247,7 @@ private struct VoiceModeHUDView: View {
 
         switch container.appState.state {
         case .voiceModeWakeListening:
-            return "Listening for Computer, Slate, Continue, or Prime cleanup."
+            return "Listening for Computer, Computer text, Continue, or Computer cleanup."
         case .voiceModePromptListening:
             return "Say your request."
         case .voiceModePromptRecording:

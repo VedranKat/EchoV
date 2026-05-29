@@ -26,7 +26,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 responseText: responseText
             )
         }
-        menuBarController = MenuBarController(container: container)
+        menuBarController = MenuBarController(
+            container: container,
+            openTextResponseSession: { [weak textResponseWindowController] sessionID in
+                textResponseWindowController?.show(sessionID: sessionID)
+            }
+        )
         voiceModePromptPreviewWindowController = VoiceModePromptPreviewWindowController(container: container)
         voiceModeHUDWindowController = VoiceModeHUDWindowController(container: container)
         container.start()

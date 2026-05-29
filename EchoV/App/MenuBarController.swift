@@ -2,14 +2,20 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class MenuBarController {
+final class MenuBarController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let container: AppContainer
+    private let openTextResponseSession: (UUID) -> Void
     private lazy var settingsWindowController = SettingsWindowController(container: container)
 
-    init(container: AppContainer) {
+    init(
+        container: AppContainer,
+        openTextResponseSession: @escaping (UUID) -> Void
+    ) {
         self.container = container
+        self.openTextResponseSession = openTextResponseSession
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        super.init()
         self.container.appState.onStatusChanged = { [weak self] in
             self?.rebuildMenu()
         }
@@ -27,6 +33,19 @@ final class MenuBarController {
     private func rebuildMenu() {
         configureStatusButton()
         let menu = NSMenu()
+        menu.delegate = self
+        populate(menu)
+        self.statusItem.menu = menu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        populate(menu)
+    }
+
+    private func populate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        addTextResponseItems(to: menu)
 
         if !container.permissionState.isAccessibilityTrusted {
             let accessibilityItem = NSMenuItem(
@@ -53,8 +72,23 @@ final class MenuBarController {
 
         let quitItem = NSMenuItem(title: "Quit EchoV", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
+    }
 
-        self.statusItem.menu = menu
+    private func addTextResponseItems(to menu: NSMenu) {
+        let sessions = container.textResponseSessions.sessions
+        guard let latestSession = sessions.first else {
+            return
+        }
+
+        let item = NSMenuItem(
+            title: "Open Text Chat",
+            action: #selector(openTextResponseSessionFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.representedObject = latestSession.id.uuidString
+        menu.addItem(item)
+        menu.addItem(NSMenuItem.separator())
     }
 
     private func configureStatusButton() {
@@ -81,6 +115,17 @@ final class MenuBarController {
         Task {
             await container.stopActiveWork()
         }
+    }
+
+    @objc private func openTextResponseSessionFromMenu(_ sender: NSMenuItem) {
+        guard
+            let rawID = sender.representedObject as? String,
+            let sessionID = UUID(uuidString: rawID)
+        else {
+            return
+        }
+
+        openTextResponseSession(sessionID)
     }
 
     private func makeMenuBarImage() -> NSImage {

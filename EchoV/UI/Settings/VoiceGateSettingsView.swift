@@ -2,7 +2,6 @@ import SwiftUI
 
 struct VoiceGateSettingsView: View {
     @Environment(AppContainer.self) private var container
-    @State private var isRecordingHotkey = false
 
     var body: some View {
         ScrollView {
@@ -14,24 +13,7 @@ struct VoiceGateSettingsView: View {
 
                 SettingsCard("Voice Gate", subtitle: "Let EchoV listen locally, record when speech starts, and transcribe after silence.") {
                     VStack(spacing: 12) {
-                        SettingsRow(
-                            icon: "ear",
-                            title: "Voice Gate hotkey",
-                            subtitle: "Press once to listen for speech, then press again to mute."
-                        ) {
-                            HStack(spacing: 8) {
-                                KeyboardShortcutChip(text: container.settings.voiceGateHotkey?.displayName ?? "Not set")
-
-                                Button("Change") {
-                                    isRecordingHotkey = true
-                                }
-
-                                Button("Clear") {
-                                    container.setVoiceGateHotkey(nil)
-                                }
-                                .disabled(container.settings.voiceGateHotkey == nil)
-                            }
-                        }
+                        ShortcutHotkeyRow(command: .voiceGate)
 
                         DividerLine()
 
@@ -72,17 +54,5 @@ struct VoiceGateSettingsView: View {
             .padding(24)
         }
         .settingsPageBackground()
-        .sheet(isPresented: $isRecordingHotkey) {
-            HotkeyRecorderSheet(
-                title: "Set Voice Gate",
-                onCancel: {
-                    isRecordingHotkey = false
-                },
-                onCapture: { binding in
-                    container.setVoiceGateHotkey(binding)
-                    isRecordingHotkey = false
-                }
-            )
-        }
     }
 }

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct VoiceGuardSettingsView: View {
     @Environment(AppContainer.self) private var container
-    @State private var isRecordingHotkey = false
 
     var body: some View {
         ScrollView {
@@ -47,7 +46,7 @@ struct VoiceGuardSettingsView: View {
                         SettingsRow(
                             icon: "text.magnifyingglass",
                             title: "Protect Voice Mode commands",
-                            subtitle: "Verify Computer, Slate, Continue, and Prime cleanup before acting."
+                            subtitle: "Verify Computer, Computer text, Continue, and Computer cleanup before acting."
                         ) {
                             Toggle("", isOn: Bindable(container.settings).isVoiceGuardEnabledForVoiceModeCommands)
                                 .labelsHidden()
@@ -70,24 +69,7 @@ struct VoiceGuardSettingsView: View {
 
                 SettingsCard("Verifier", subtitle: "Local speaker verification stays on this Mac.") {
                     VStack(spacing: 12) {
-                        SettingsRow(
-                            icon: "keyboard.badge.ellipsis",
-                            title: "Voice Guard hotkey",
-                            subtitle: "Toggle the master Voice Guard switch. Target selections are preserved."
-                        ) {
-                            HStack(spacing: 8) {
-                                KeyboardShortcutChip(text: container.settings.voiceGateVerifierToggleHotkey?.displayName ?? "Not set")
-
-                                Button("Change") {
-                                    isRecordingHotkey = true
-                                }
-
-                                Button("Clear") {
-                                    container.setVoiceGateVerifierToggleHotkey(nil)
-                                }
-                                .disabled(container.settings.voiceGateVerifierToggleHotkey == nil)
-                            }
-                        }
+                        ShortcutHotkeyRow(command: .voiceGuard)
 
                         DividerLine()
 
@@ -194,18 +176,6 @@ struct VoiceGuardSettingsView: View {
             Task {
                 await container.modelStore.refreshManagedInstallState()
             }
-        }
-        .sheet(isPresented: $isRecordingHotkey) {
-            HotkeyRecorderSheet(
-                title: "Set Voice Guard",
-                onCancel: {
-                    isRecordingHotkey = false
-                },
-                onCapture: { binding in
-                    container.setVoiceGateVerifierToggleHotkey(binding)
-                    isRecordingHotkey = false
-                }
-            )
         }
     }
 

@@ -3,7 +3,6 @@ import SwiftUI
 
 struct GeneralSettingsView: View {
     @Environment(AppContainer.self) private var container
-    @State private var hotkeyBeingRecorded: EditableHotkey?
     @State private var microphones: [MicrophoneDevice] = []
 
     var body: some View {
@@ -16,30 +15,15 @@ struct GeneralSettingsView: View {
 
                 SettingsCard("Recording", subtitle: "Choose how EchoV starts and captures dictation audio.") {
                     VStack(spacing: 12) {
-                        hotkeyRow(
-                            editableHotkey: .toggle,
-                            icon: "keyboard.badge.ellipsis",
-                            title: "Toggle hotkey",
-                            subtitle: "Press once to start recording, then again to stop."
-                        )
+                        ShortcutHotkeyRow(command: .toggle)
 
                         DividerLine()
 
-                        hotkeyRow(
-                            editableHotkey: .pushToTalk,
-                            icon: "mic.badge.plus",
-                            title: "Push to talk",
-                            subtitle: "Hold the shortcut to record, then release to transcribe."
-                        )
+                        ShortcutHotkeyRow(command: .pushToTalk)
 
                         DividerLine()
 
-                        hotkeyRow(
-                            editableHotkey: .stop,
-                            icon: "stop.circle",
-                            title: "Stop EchoV",
-                            subtitle: "Cancel active listening, recording, generation, or speech."
-                        )
+                        ShortcutHotkeyRow(command: .stop)
 
                         DividerLine()
 
@@ -185,68 +169,6 @@ struct GeneralSettingsView: View {
             container.refreshPermissions()
             refreshMicrophones()
         }
-        .sheet(item: $hotkeyBeingRecorded) { editableHotkey in
-            HotkeyRecorderSheet(
-                title: "Set \(editableHotkey.title)",
-                onCancel: {
-                    hotkeyBeingRecorded = nil
-                },
-                onCapture: { binding in
-                    setHotkey(binding, for: editableHotkey)
-                    hotkeyBeingRecorded = nil
-                }
-            )
-        }
-    }
-
-    private func hotkeyRow(
-        editableHotkey: EditableHotkey,
-        icon: String,
-        title: String,
-        subtitle: String
-    ) -> some View {
-        let binding = hotkey(for: editableHotkey)
-
-        return SettingsRow(
-            icon: icon,
-            title: title,
-            subtitle: subtitle
-        ) {
-            HStack(spacing: 8) {
-                KeyboardShortcutChip(text: binding?.displayName ?? "Not set")
-
-                Button("Change") {
-                    hotkeyBeingRecorded = editableHotkey
-                }
-
-                Button("Clear") {
-                    setHotkey(nil, for: editableHotkey)
-                }
-                .disabled(binding == nil)
-            }
-        }
-    }
-
-    private func hotkey(for editableHotkey: EditableHotkey) -> HotkeyBinding? {
-        switch editableHotkey {
-        case .toggle:
-            container.settings.toggleHotkey
-        case .pushToTalk:
-            container.settings.pushToTalkHotkey
-        case .stop:
-            container.settings.stopHotkey
-        }
-    }
-
-    private func setHotkey(_ binding: HotkeyBinding?, for editableHotkey: EditableHotkey) {
-        switch editableHotkey {
-        case .toggle:
-            container.setToggleHotkey(binding)
-        case .pushToTalk:
-            container.setPushToTalkHotkey(binding)
-        case .stop:
-            container.setStopHotkey(binding)
-        }
     }
 
     private var microphoneSelectionSubtitle: String {
@@ -388,28 +310,6 @@ struct GeneralSettingsView: View {
             await container.requestMicrophoneAccess()
         }
     }
-}
-
-private enum EditableHotkey: String, Identifiable {
-    case toggle
-    case pushToTalk
-    case stop
-
-    var id: String {
-        rawValue
-    }
-
-    var title: String {
-        switch self {
-        case .toggle:
-            "Toggle hotkey"
-        case .pushToTalk:
-            "Push to talk"
-        case .stop:
-            "Stop EchoV"
-        }
-    }
-
 }
 
 struct HotkeyRecorderSheet: View {

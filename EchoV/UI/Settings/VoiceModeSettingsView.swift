@@ -2,15 +2,13 @@ import SwiftUI
 
 struct VoiceModeSettingsView: View {
     @Environment(AppContainer.self) private var container
-    @State private var isRecordingVoiceHotkey = false
-    @State private var isRecordingTextHotkey = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
                     title: "Voice Mode",
-                    subtitle: "Say Computer for spoken answers, Slate for text-response sessions, Continue to follow up, or Prime cleanup for selected text."
+                    subtitle: "Say Computer for spoken answers, Computer text for text-response sessions, Continue to follow up, or Computer cleanup for selected text."
                 )
 
                 SettingsCard("Activation", subtitle: "Keep Voice Mode explicit and local.") {
@@ -35,24 +33,24 @@ struct VoiceModeSettingsView: View {
                         SettingsRow(
                             icon: "text.quote",
                             title: "Voice commands",
-                            subtitle: "Computer speaks, Slate starts text, Continue appends, Prime cleanup rewrites selected text with Prime."
+                            subtitle: "Computer speaks, Computer text starts text, Continue appends, Computer cleanup rewrites selected text with Prime."
                         ) {
                             ViewThatFits(in: .horizontal) {
                                 HStack(spacing: 8) {
                                     StatusBadge(text: "Computer", tone: .active)
-                                    StatusBadge(text: "Slate", tone: .success)
+                                    StatusBadge(text: "Computer text", tone: .success)
                                     StatusBadge(text: "Continue", tone: .neutral)
-                                    StatusBadge(text: "Prime cleanup", tone: .warning)
+                                    StatusBadge(text: "Computer cleanup", tone: .warning)
                                 }
 
                                 VStack(alignment: .trailing, spacing: 6) {
                                     HStack(spacing: 8) {
                                         StatusBadge(text: "Computer", tone: .active)
-                                        StatusBadge(text: "Slate", tone: .success)
+                                        StatusBadge(text: "Computer text", tone: .success)
                                     }
                                     HStack(spacing: 8) {
                                         StatusBadge(text: "Continue", tone: .neutral)
-                                        StatusBadge(text: "Prime cleanup", tone: .warning)
+                                        StatusBadge(text: "Computer cleanup", tone: .warning)
                                     }
                                 }
                             }
@@ -60,45 +58,11 @@ struct VoiceModeSettingsView: View {
 
                         DividerLine()
 
-                        SettingsRow(
-                            icon: "keyboard.badge.ellipsis",
-                            title: "Manual voice activation",
-                            subtitle: "Start spoken-answer listening without saying Computer."
-                        ) {
-                            HStack(spacing: 8) {
-                                KeyboardShortcutChip(text: container.settings.voiceModeActivationHotkey?.displayName ?? "Not set")
-
-                                Button("Change") {
-                                    isRecordingVoiceHotkey = true
-                                }
-
-                                Button("Clear") {
-                                    container.setVoiceModeActivationHotkey(nil)
-                                }
-                                .disabled(container.settings.voiceModeActivationHotkey == nil)
-                            }
-                        }
+                        ShortcutHotkeyRow(command: .voiceModeVoice)
 
                         DividerLine()
 
-                        SettingsRow(
-                            icon: "keyboard.badge.ellipsis",
-                            title: "Manual text activation",
-                            subtitle: "Start text-response listening without saying Slate."
-                        ) {
-                            HStack(spacing: 8) {
-                                KeyboardShortcutChip(text: container.settings.voiceModeTextActivationHotkey?.displayName ?? "Not set")
-
-                                Button("Change") {
-                                    isRecordingTextHotkey = true
-                                }
-
-                                Button("Clear") {
-                                    container.setVoiceModeTextActivationHotkey(nil)
-                                }
-                                .disabled(container.settings.voiceModeTextActivationHotkey == nil)
-                            }
-                        }
+                        ShortcutHotkeyRow(command: .voiceModeText)
                     }
                 }
 
@@ -237,7 +201,7 @@ struct VoiceModeSettingsView: View {
                     }
                 }
 
-                SettingsCard("Text Response", subtitle: "Slate notifications stay final-only; chat follow-ups can stream.") {
+                SettingsCard("Text Response", subtitle: "Computer text notifications stay final-only; chat follow-ups can stream.") {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "dot.radiowaves.left.and.right",
@@ -316,35 +280,11 @@ struct VoiceModeSettingsView: View {
             .padding(24)
         }
         .settingsPageBackground()
-        .sheet(isPresented: $isRecordingVoiceHotkey) {
-            HotkeyRecorderSheet(
-                title: "Set Voice Mode Voice",
-                onCancel: {
-                    isRecordingVoiceHotkey = false
-                },
-                onCapture: { binding in
-                    container.setVoiceModeActivationHotkey(binding)
-                    isRecordingVoiceHotkey = false
-                }
-            )
-        }
-        .sheet(isPresented: $isRecordingTextHotkey) {
-            HotkeyRecorderSheet(
-                title: "Set Voice Mode Text",
-                onCancel: {
-                    isRecordingTextHotkey = false
-                },
-                onCapture: { binding in
-                    container.setVoiceModeTextActivationHotkey(binding)
-                    isRecordingTextHotkey = false
-                }
-            )
-        }
     }
 
     private var voiceModeSubtitle: String {
         if container.settings.isVoiceModeEnabled {
-            return "Listening for Computer, Slate, Continue, or Prime cleanup while EchoV is running."
+            return "Listening for Computer, Computer text, Continue, or Computer cleanup while EchoV is running."
         }
 
         return "Voice Mode starts only when this is enabled."

@@ -84,6 +84,10 @@ enum KokoroVoiceCatalog {
 protocol SpeechOutputService: AnyObject {
     var availableVoices: [SpeechVoice] { get }
 
+    func prepare(
+        voiceIdentifier: String,
+        onStatusChanged: @escaping @MainActor (String) -> Void
+    ) async throws
     func speak(
         _ text: String,
         voiceIdentifier: String,
@@ -100,6 +104,19 @@ final class KokoroSpeechOutputService: SpeechOutputService {
 
     var availableVoices: [SpeechVoice] {
         KokoroVoiceCatalog.availableVoices
+    }
+
+    func prepare(
+        voiceIdentifier: String,
+        onStatusChanged: @escaping @MainActor (String) -> Void
+    ) async throws {
+        onStatusChanged("Preparing Kokoro speech model...")
+        DiagnosticLog.write("Kokoro prewarm requested voice=\(voiceIdentifier)")
+        try await synthesizer.prepare(
+            voiceIdentifier: voiceIdentifier,
+            onStatusChanged: onStatusChanged
+        )
+        DiagnosticLog.write("Kokoro prewarm completed")
     }
 
     func speak(
@@ -137,6 +154,14 @@ final class KokoroSpeechOutputService: SpeechOutputService {
 @MainActor
 private final class KokoroSpeechSynthesizer {
     nonisolated(unsafe) private var manager: KokoroTtsManager?
+    private var initializationTask: Task<KokoroTtsManager, Error>?
+
+    func prepare(
+        voiceIdentifier: String,
+        onStatusChanged: @escaping @MainActor (String) -> Void
+    ) async throws {
+        _ = try await configuredManager(defaultVoice: voiceIdentifier, onStatusChanged: onStatusChanged)
+    }
 
     func generate(
         text: String,
@@ -166,20 +191,46 @@ private final class KokoroSpeechSynthesizer {
             return manager
         }
 
-        onStatusChanged("Loading Kokoro models...")
-        DiagnosticLog.write("Kokoro manager initialization started voice=\(defaultVoice)")
-        let models = try await TtsModels.download { progress in
-            Task { @MainActor in
-                onStatusChanged(Self.statusMessage(for: progress))
+        if let initializationTask {
+            do {
+                let manager = try await initializationTask.value
+                self.manager = manager
+                self.initializationTask = nil
+                onStatusChanged("Loading Kokoro voice...")
+                try await manager.setDefaultVoice(defaultVoice)
+                return manager
+            } catch {
+                self.initializationTask = nil
+                throw error
             }
         }
 
-        onStatusChanged("Preparing Kokoro voice assets...")
-        let manager = KokoroTtsManager(defaultVoice: defaultVoice)
-        try await manager.initialize(models: models, preloadVoices: Set([defaultVoice]))
-        self.manager = manager
-        DiagnosticLog.write("Kokoro manager initialization completed")
-        return manager
+        let initializationTask = Task { @MainActor in
+            onStatusChanged("Loading Kokoro models...")
+            DiagnosticLog.write("Kokoro manager initialization started voice=\(defaultVoice)")
+            let models = try await TtsModels.download { progress in
+                Task { @MainActor in
+                    onStatusChanged(Self.statusMessage(for: progress))
+                }
+            }
+
+            onStatusChanged("Preparing Kokoro voice assets...")
+            let manager = KokoroTtsManager(defaultVoice: defaultVoice)
+            try await manager.initialize(models: models, preloadVoices: Set([defaultVoice]))
+            DiagnosticLog.write("Kokoro manager initialization completed")
+            return manager
+        }
+        self.initializationTask = initializationTask
+
+        do {
+            let manager = try await initializationTask.value
+            self.manager = manager
+            self.initializationTask = nil
+            return manager
+        } catch {
+            self.initializationTask = nil
+            throw error
+        }
     }
 
     private static func statusMessage(for progress: DownloadUtils.DownloadProgress) -> String {

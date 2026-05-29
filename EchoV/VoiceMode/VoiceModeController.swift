@@ -33,6 +33,7 @@ final class VoiceModeController {
     private var promptSpeechStarted = false
     private var noSpeechTimeoutTask: Task<Void, Never>?
     private var activeOperationTask: Task<Void, Never>?
+    private var speechPrewarmTask: Task<Void, Never>?
     private var runID = 0
 
     init(
@@ -129,6 +130,7 @@ final class VoiceModeController {
 
     func start() async {
         isEnabled = true
+        prewarmSpeechOutputIfNeeded()
         await startWakeListening()
     }
 
@@ -148,6 +150,7 @@ final class VoiceModeController {
         invalidateCurrentRun()
         cancelNoSpeechTimeout()
         cancelActiveOperation()
+        cancelSpeechPrewarm()
         capture.stop()
         speechOutput.stop()
         if wasEnabled {
@@ -166,7 +169,7 @@ final class VoiceModeController {
         appState.lastError = nil
         setState(
             .voiceModeWakeListening,
-            detail: detail ?? "Voice Mode is listening for Computer, Slate, Continue, or Prime cleanup."
+            detail: detail ?? "Voice Mode is listening for Computer, Computer text, Continue, or Computer cleanup."
         )
 
         do {
@@ -526,6 +529,40 @@ final class VoiceModeController {
         activeOperationTask = nil
     }
 
+    private func prewarmSpeechOutputIfNeeded() {
+        guard speechPrewarmTask == nil else {
+            return
+        }
+
+        speechPrewarmTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                try await self.speechOutput.prepare(
+                    voiceIdentifier: self.speechVoiceIdentifier(),
+                    onStatusChanged: { detail in
+                        DiagnosticLog.write("Kokoro prewarm status: \(detail)")
+                    }
+                )
+            } catch is CancellationError {
+                DiagnosticLog.write("Kokoro prewarm cancelled")
+            } catch {
+                DiagnosticLog.write("Kokoro prewarm failed: \(error.localizedDescription)")
+            }
+
+            if !Task.isCancelled {
+                self.speechPrewarmTask = nil
+            }
+        }
+    }
+
+    private func cancelSpeechPrewarm() {
+        speechPrewarmTask?.cancel()
+        speechPrewarmTask = nil
+    }
+
     private func selectedTextContext(for command: VoiceModeActivationCommand) async -> String? {
         guard command == .textResponse else {
             return nil
@@ -539,7 +576,7 @@ final class VoiceModeController {
         guard await onCleanUpSelection() else {
             let failureDetail = appState.lastError?.userMessage
                 ?? appState.lastDetail
-                ?? "Prime cleanup failed."
+                ?? "Computer cleanup failed."
             await startWakeListening(detail: "\(failureDetail) Listening again.")
             return
         }

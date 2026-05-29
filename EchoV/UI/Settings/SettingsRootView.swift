@@ -57,6 +57,8 @@ struct SettingsRootView: View {
         switch selection {
         case .status:
             StatusOverviewView()
+        case .shortcuts:
+            ShortcutsSettingsView()
         case .dictation:
             GeneralSettingsView()
         case .voiceGate:
@@ -118,6 +120,7 @@ private struct SettingsSidebar: View {
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case status
+    case shortcuts
     case dictation
     case voiceGate
     case voiceGuard
@@ -134,6 +137,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .status:
             "Status"
+        case .shortcuts:
+            "Shortcuts"
         case .dictation:
             "Dictation"
         case .voiceGate:
@@ -159,6 +164,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .status:
             "gauge.with.dots.needle.bottom.50percent"
+        case .shortcuts:
+            "keyboard"
         case .dictation:
             "mic"
         case .voiceGate:

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TranscriptionSettingsView: View {
     @Environment(AppContainer.self) private var container
-    @State private var isRecordingPrimeHotkey = false
 
     var body: some View {
         ScrollView {
@@ -112,24 +111,7 @@ struct TranscriptionSettingsView: View {
 
                         DividerLine()
 
-                        SettingsRow(
-                            icon: "keyboard.badge.ellipsis",
-                            title: "Prime hotkey",
-                            subtitle: "Toggle Prime post-processing on or off."
-                        ) {
-                            HStack(spacing: 8) {
-                                KeyboardShortcutChip(text: container.settings.primeToggleHotkey?.displayName ?? "Not set")
-
-                                Button("Change") {
-                                    isRecordingPrimeHotkey = true
-                                }
-
-                                Button("Clear") {
-                                    container.setPrimeToggleHotkey(nil)
-                                }
-                                .disabled(container.settings.primeToggleHotkey == nil)
-                            }
-                        }
+                        ShortcutHotkeyRow(command: .prime)
 
                         DividerLine()
 
@@ -314,18 +296,6 @@ struct TranscriptionSettingsView: View {
             .padding(24)
         }
         .settingsPageBackground()
-        .sheet(isPresented: $isRecordingPrimeHotkey) {
-            HotkeyRecorderSheet(
-                title: "Set Prime Hotkey",
-                onCancel: {
-                    isRecordingPrimeHotkey = false
-                },
-                onCapture: { binding in
-                    container.setPrimeToggleHotkey(binding)
-                    isRecordingPrimeHotkey = false
-                }
-            )
-        }
     }
 
     private var modelTitle: String {
