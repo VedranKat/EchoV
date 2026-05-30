@@ -57,7 +57,7 @@ struct StatusOverviewView: View {
                 }
 
                 if !recentRejectedWakeTranscripts.isEmpty {
-                    SettingsCard("Ignored Voice Commands", subtitle: "Recent wake phrases that EchoV did not treat as commands.") {
+                    SettingsCard("Ignored Assistant Commands", subtitle: "Recent wake phrases that EchoV did not treat as commands.") {
                         VStack(spacing: 10) {
                             ForEach(Array(recentRejectedWakeTranscripts.enumerated()), id: \.element.id) { index, transcript in
                                 rejectedWakeTranscriptRow(transcript)
@@ -223,11 +223,11 @@ struct StatusOverviewView: View {
         case .voiceGateRecording:
             "Recording Speech"
         case .voiceModeWakeListening:
-            "Voice Mode"
+            "Assistant"
         case .voiceModeCheckingWakePhrase:
             "Checking Phrase"
         case .voiceModePromptListening:
-            "Voice Mode"
+            "Assistant"
         case .voiceModePromptRecording:
             "Recording Request"
         case .voiceModeThinking:
@@ -263,13 +263,13 @@ struct StatusOverviewView: View {
         case .idle:
             "Use the global hotkey while focused in the app where you want the transcript inserted."
         case .listening:
-            "Voice Gate is armed. Speak when ready, or press the Voice Gate hotkey again to mute."
+            "Hands-free is armed. Speak when ready, or press the Hands-free hotkey again to mute."
         case .recording:
             "Speak naturally. Stop recording when you are done."
         case .voiceGateRecording:
             "Speech detected. EchoV will transcribe after the configured silence timeout."
         case .voiceModeWakeListening:
-            "Voice Mode is listening for Computer, Computer text, Continue, or Computer cleanup."
+            "Assistant is listening for Computer, Computer text, Continue, or Computer cleanup."
         case .voiceModeCheckingWakePhrase:
             "Checking whether the last phrase was Computer, Computer text, Continue, or Computer cleanup."
         case .voiceModePromptListening:

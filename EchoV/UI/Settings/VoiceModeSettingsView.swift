@@ -7,15 +7,15 @@ struct VoiceModeSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
-                    title: "Voice Mode",
+                    title: "Assistant",
                     subtitle: "Say Computer for spoken answers, Computer text for text-response sessions, Continue to follow up, or Computer cleanup for selected text."
                 )
 
-                SettingsCard("Activation", subtitle: "Keep Voice Mode explicit and local.") {
+                SettingsCard("Activation", subtitle: "Keep Assistant explicit and local.") {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "power",
-                            title: "Voice Mode",
+                            title: "Assistant",
                             subtitle: voiceModeSubtitle
                         ) {
                             Toggle(
@@ -106,7 +106,7 @@ struct VoiceModeSettingsView: View {
                         SettingsRow(
                             icon: "rectangle.inset.filled.and.person.filled",
                             title: "Status HUD",
-                            subtitle: "Show a compact floating Voice Mode status panel."
+                            subtitle: "Show a compact floating Assistant status panel."
                         ) {
                             Toggle(
                                 "",
@@ -287,7 +287,7 @@ struct VoiceModeSettingsView: View {
             return "Listening for Computer, Computer text, Continue, or Computer cleanup while EchoV is running."
         }
 
-        return "Voice Mode starts only when this is enabled."
+        return "Assistant starts only when this is enabled."
     }
 
     @ViewBuilder

@@ -72,6 +72,46 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                SettingsCard("Hands-free", subtitle: "Listen locally, record when speech starts, and transcribe after silence.") {
+                    VStack(spacing: 12) {
+                        ShortcutHotkeyRow(command: .voiceGate)
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "timer",
+                            title: "Silence timeout",
+                            subtitle: container.settings.voiceGateSilenceTimeout.subtitle
+                        ) {
+                            Picker("", selection: Bindable(container.settings).voiceGateSilenceTimeout) {
+                                ForEach(VoiceGateSilenceTimeout.allCases) { timeout in
+                                    Text(timeout.title).tag(timeout)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 250)
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "waveform",
+                            title: "Sensitivity",
+                            subtitle: container.settings.voiceGateSensitivity.subtitle
+                        ) {
+                            Picker("", selection: Bindable(container.settings).voiceGateSensitivity) {
+                                ForEach(VoiceGateSensitivity.allCases) { sensitivity in
+                                    Text(sensitivity.title).tag(sensitivity)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 250)
+                        }
+                    }
+                }
+
                 SettingsCard("Permissions", subtitle: "EchoV needs microphone access to listen, accessibility access to paste, and startup enabled to be ready after login.") {
                     VStack(spacing: 12) {
                         SettingsRow(

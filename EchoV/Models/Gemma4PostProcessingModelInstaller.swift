@@ -4,14 +4,17 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
     private let maxAttempts = 3
 
     func install(
+        modelDefinition: PostProcessingModelDefinition = .defaultModel,
         proxySettings: ProxySettings = .disabled,
         progress: @escaping @Sendable (String) -> Void
     ) async throws -> URL {
-        let destination = Gemma4PostProcessingModelLayout.managedModelURL
-        let fileURL = destination.appendingPathComponent(Gemma4PostProcessingModelLayout.ggufFileName)
-        let partialURL = destination.appendingPathComponent("\(Gemma4PostProcessingModelLayout.ggufFileName).download")
+        let destination = Gemma4PostProcessingModelLayout.managedModelURL(for: modelDefinition)
+        let fileURL = destination.appendingPathComponent(modelDefinition.ggufFileName)
+        let partialURL = destination.appendingPathComponent("\(modelDefinition.ggufFileName).download")
 
-        DiagnosticLog.write("Managed Gemma install started destination=\(destination.path)")
+        DiagnosticLog.write(
+            "Managed Gemma install started model=\(modelDefinition.id) destination=\(destination.path)"
+        )
 
         var lastError: Error?
 
@@ -21,10 +24,12 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
 
             if attempt > 1 {
                 let retryMessage = isCleanRetry
-                    ? "Retrying Gemma download with a clean file..."
-                    : "Retrying Gemma download..."
+                    ? "Retrying \(modelDefinition.displayName) download with a clean file..."
+                    : "Retrying \(modelDefinition.displayName) download..."
                 progress(retryMessage)
-                DiagnosticLog.write("Managed Gemma install retry \(attemptLabel) clean=\(isCleanRetry)")
+                DiagnosticLog.write(
+                    "Managed Gemma install retry model=\(modelDefinition.id) \(attemptLabel) clean=\(isCleanRetry)"
+                )
             }
 
             do {
@@ -34,7 +39,11 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
                     try? FileManager.default.removeItem(at: partialURL)
                 }
 
-                try await downloadModel(to: partialURL, proxySettings: proxySettings) { detail in
+                try await downloadModel(
+                    modelDefinition: modelDefinition,
+                    to: partialURL,
+                    proxySettings: proxySettings
+                ) { detail in
                     progress(attempt == 1 ? detail : "\(detail) (\(attemptLabel))")
                 }
 
@@ -43,13 +52,15 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
                 }
 
                 try FileManager.default.moveItem(at: partialURL, to: fileURL)
-                try validateInstalledModel(at: destination)
-                DiagnosticLog.write("Managed Gemma install completed destination=\(destination.path)")
+                try validateInstalledModel(at: destination, modelDefinition: modelDefinition)
+                DiagnosticLog.write(
+                    "Managed Gemma install completed model=\(modelDefinition.id) destination=\(destination.path)"
+                )
                 return destination
             } catch {
                 lastError = error
                 DiagnosticLog.write(
-                    "Managed Gemma install failed \(attemptLabel) clean=\(isCleanRetry) error=\(error.localizedDescription)"
+                    "Managed Gemma install failed model=\(modelDefinition.id) \(attemptLabel) clean=\(isCleanRetry) error=\(error.localizedDescription)"
                 )
 
                 if attempt < maxAttempts {
@@ -65,13 +76,14 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
     }
 
     private func downloadModel(
+        modelDefinition: PostProcessingModelDefinition,
         to partialURL: URL,
         proxySettings: ProxySettings,
         progress: @escaping @Sendable (String) -> Void
     ) async throws {
-        progress("Starting Gemma 4 E2B Q4 download...")
+        progress("Starting \(modelDefinition.displayName) \(modelDefinition.quantization) download...")
 
-        var request = URLRequest(url: Gemma4PostProcessingModelLayout.downloadURL)
+        var request = URLRequest(url: modelDefinition.downloadURL)
         request.setValue("EchoV", forHTTPHeaderField: "User-Agent")
 
         let session = ProxyURLSessionFactory(proxySettings: proxySettings).makeSession()
@@ -106,7 +118,13 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
             }
 
             if Date().timeIntervalSince(lastProgressUpdate) >= 0.75 {
-                progress(Self.progressMessage(downloadedBytes: downloadedBytes, expectedBytes: expectedBytes))
+                progress(
+                    Self.progressMessage(
+                        modelDefinition: modelDefinition,
+                        downloadedBytes: downloadedBytes,
+                        expectedBytes: expectedBytes
+                    )
+                )
                 lastProgressUpdate = Date()
             }
         }
@@ -115,22 +133,32 @@ struct Gemma4PostProcessingModelInstaller: Sendable {
             try handle.write(contentsOf: buffer)
         }
 
-        progress("Finishing Gemma install...")
+        progress("Finishing \(modelDefinition.displayName) install...")
     }
 
-    private func validateInstalledModel(at url: URL) throws {
-        guard Gemma4PostProcessingModelLayout.modelFolderCandidate(for: url) != nil else {
+    private func validateInstalledModel(
+        at url: URL,
+        modelDefinition: PostProcessingModelDefinition
+    ) throws {
+        guard Gemma4PostProcessingModelLayout.modelFolderCandidate(
+            for: url,
+            definition: modelDefinition
+        ) != nil else {
             throw GemmaInstallError.incompleteInstall
         }
     }
 
-    private static func progressMessage(downloadedBytes: Int64, expectedBytes: Int64) -> String {
+    private static func progressMessage(
+        modelDefinition: PostProcessingModelDefinition,
+        downloadedBytes: Int64,
+        expectedBytes: Int64
+    ) -> String {
         guard expectedBytes > 0 else {
-            return "Downloading Gemma \(byteCount(downloadedBytes))"
+            return "Downloading \(modelDefinition.displayName) \(byteCount(downloadedBytes))"
         }
 
         let percent = Double(downloadedBytes) / Double(expectedBytes)
-        return "Downloading Gemma \(Int(percent * 100))% (\(byteCount(downloadedBytes)) / \(byteCount(expectedBytes)))"
+        return "Downloading \(modelDefinition.displayName) \(Int(percent * 100))% (\(byteCount(downloadedBytes)) / \(byteCount(expectedBytes)))"
     }
 
     private static func byteCount(_ bytes: Int64) -> String {

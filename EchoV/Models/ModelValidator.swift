@@ -3,7 +3,10 @@ import Foundation
 protocol ModelValidator: Sendable {
     func validateASRModel(at url: URL) async -> ModelValidationResult
     func validateLlamaRuntime(at url: URL) async -> ModelValidationResult
-    func validatePostProcessingModel(at url: URL) async -> ModelValidationResult
+    func validatePostProcessingModel(
+        at url: URL,
+        modelDefinition: PostProcessingModelDefinition
+    ) async -> ModelValidationResult
     func validateSpeakerVerifierRuntime(at url: URL) async -> ModelValidationResult
 }
 
@@ -52,28 +55,40 @@ struct ParakeetModelValidator: ModelValidator {
         )
     }
 
-    func validatePostProcessingModel(at url: URL) async -> ModelValidationResult {
+    func validatePostProcessingModel(
+        at url: URL,
+        modelDefinition: PostProcessingModelDefinition
+    ) async -> ModelValidationResult {
         guard Gemma4PostProcessingModelLayout.isDirectory(url) else {
             return ModelValidationResult(isValid: false, message: "Selected path is not a folder.")
         }
 
-        guard Gemma4PostProcessingModelLayout.modelFolderCandidate(for: url) != nil else {
-            if let closestModelURL = Gemma4PostProcessingModelLayout.existingModelFolderCandidates(for: url).first {
+        guard Gemma4PostProcessingModelLayout.modelFolderCandidate(
+            for: url,
+            definition: modelDefinition
+        ) != nil else {
+            if let closestModelURL = Gemma4PostProcessingModelLayout.existingModelFolderCandidates(
+                for: url,
+                definition: modelDefinition
+            ).first {
                 return ModelValidationResult(
                     isValid: false,
-                    message: Gemma4PostProcessingModelLayout.missingFilesMessage(at: closestModelURL)
+                    message: Gemma4PostProcessingModelLayout.missingFilesMessage(
+                        at: closestModelURL,
+                        definition: modelDefinition
+                    )
                 )
             }
 
             return ModelValidationResult(
                 isValid: false,
-                message: "Select \(Gemma4PostProcessingModelLayout.expectedFolderName), \(Gemma4PostProcessingModelLayout.modelID), or a parent folder."
+                message: "Select \(modelDefinition.expectedFolderName), \(modelDefinition.modelID), or a parent folder."
             )
         }
 
         return ModelValidationResult(
             isValid: true,
-            message: "\(Gemma4PostProcessingModelLayout.displayName) model files are ready."
+            message: "\(modelDefinition.displayName) model files are ready."
         )
     }
 

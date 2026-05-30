@@ -7,15 +7,15 @@ struct VoiceGuardSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
-                    title: "Voice Guard",
+                    title: "Trusted Voice",
                     subtitle: "Use your local voice profile to decide which voice-controlled workflows EchoV accepts."
                 )
 
-                SettingsCard("Voice Guard", subtitle: voiceGuardCardSubtitle) {
+                SettingsCard("Trusted Voice", subtitle: voiceGuardCardSubtitle) {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "person.wave.2",
-                            title: "Enable Voice Guard",
+                            title: "Enable Trusted Voice",
                             subtitle: voiceGuardMasterSubtitle
                         ) {
                             Toggle(
@@ -33,8 +33,8 @@ struct VoiceGuardSettingsView: View {
 
                         SettingsRow(
                             icon: "ear.badge.checkmark",
-                            title: "Protect Voice Gate",
-                            subtitle: "Verify the speaker before Voice Gate transcribes and inserts."
+                            title: "Protect Hands-free",
+                            subtitle: "Verify the speaker before Hands-free transcribes and inserts."
                         ) {
                             Toggle("", isOn: Bindable(container.settings).isVoiceGuardEnabledForVoiceGate)
                                 .labelsHidden()
@@ -45,7 +45,7 @@ struct VoiceGuardSettingsView: View {
 
                         SettingsRow(
                             icon: "text.magnifyingglass",
-                            title: "Protect Voice Mode commands",
+                            title: "Protect Assistant commands",
                             subtitle: "Verify Computer, Computer text, Continue, and Computer cleanup before acting."
                         ) {
                             Toggle("", isOn: Bindable(container.settings).isVoiceGuardEnabledForVoiceModeCommands)
@@ -57,8 +57,8 @@ struct VoiceGuardSettingsView: View {
 
                         SettingsRow(
                             icon: "captions.bubble",
-                            title: "Protect Voice Mode requests",
-                            subtitle: "Verify the spoken request after an accepted Voice Mode command."
+                            title: "Protect Assistant requests",
+                            subtitle: "Verify the spoken request after an accepted Assistant command."
                         ) {
                             Toggle("", isOn: Bindable(container.settings).isVoiceGuardEnabledForVoiceModeRequests)
                                 .labelsHidden()
@@ -67,7 +67,7 @@ struct VoiceGuardSettingsView: View {
                     }
                 }
 
-                SettingsCard("Verifier", subtitle: "Local speaker verification stays on this Mac.") {
+                SettingsCard("Verification", subtitle: "Trusted Voice checks stay on this Mac.") {
                     VStack(spacing: 12) {
                         ShortcutHotkeyRow(command: .voiceGuard)
 
@@ -184,23 +184,23 @@ struct VoiceGuardSettingsView: View {
             return "Active for the selected workflows."
         }
 
-        return "Off. Target selections are saved for the next time Voice Guard is enabled."
+        return "Off. Target selections are saved for the next time Trusted Voice is enabled."
     }
 
     private var voiceGuardMasterSubtitle: String {
         guard isSpeakerVerifierReady else {
-            return "Install the speaker verifier before enabling Voice Guard."
+            return "Install the speaker verifier before enabling Trusted Voice."
         }
 
         guard let profile = container.speakerProfileStore.profile else {
-            return "Record a voice profile before enabling Voice Guard."
+            return "Record a voice profile before enabling Trusted Voice."
         }
 
         guard profile.modelID == SpeakerVerifierRuntimeLayout.modelID else {
             return "Re-enroll your voice profile for the ONNX verifier."
         }
 
-        return "Master switch for all selected Voice Guard targets."
+        return "Master switch for all selected Trusted Voice targets."
     }
 
     private var isVoiceGuardAvailable: Bool {
@@ -264,7 +264,7 @@ struct VoiceGuardSettingsView: View {
         }
 
         guard profile.modelID == SpeakerVerifierRuntimeLayout.modelID else {
-            return "Recorded with an older verifier. Re-enroll before enabling Voice Guard."
+            return "Recorded with an older verifier. Re-enroll before enabling Trusted Voice."
         }
 
         return "Created \(profile.createdAt.formatted(date: .abbreviated, time: .shortened))."
@@ -322,7 +322,7 @@ private struct VoiceProfileEnrollmentPrompt: View {
 
             Text("""
             This is my normal speaking voice for EchoV.
-            I am recording a short voice profile so Voice Guard can recognize me.
+            I am recording a short voice profile so Trusted Voice can recognize me.
             I usually speak at this volume and distance from the microphone.
             """)
             .font(.callout)

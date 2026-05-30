@@ -7,11 +7,11 @@ struct VoiceGateSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
-                    title: "Voice Gate",
+                    title: "Hands-free",
                     subtitle: "Let EchoV listen locally, record when speech starts, and transcribe after silence."
                 )
 
-                SettingsCard("Voice Gate", subtitle: "Let EchoV listen locally, record when speech starts, and transcribe after silence.") {
+                SettingsCard("Hands-free", subtitle: "Let EchoV listen locally, record when speech starts, and transcribe after silence.") {
                     VStack(spacing: 12) {
                         ShortcutHotkeyRow(command: .voiceGate)
 

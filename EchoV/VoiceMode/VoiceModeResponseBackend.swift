@@ -20,7 +20,7 @@ enum VoiceModeResponseBackend: String, CaseIterable, Identifiable, Sendable {
         case .localLlama:
             "Use the selected local text model through llama-server."
         case .openAICompatibleCloud:
-            "Send Voice Mode requests to a configured chat completions endpoint."
+            "Send Assistant requests to a configured chat completions endpoint."
         }
     }
 }

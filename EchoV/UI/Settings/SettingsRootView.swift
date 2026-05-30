@@ -61,8 +61,6 @@ struct SettingsRootView: View {
             ShortcutsSettingsView()
         case .dictation:
             GeneralSettingsView()
-        case .voiceGate:
-            VoiceGateSettingsView()
         case .voiceGuard:
             VoiceGuardSettingsView()
         case .voiceMode:
@@ -122,7 +120,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case status
     case shortcuts
     case dictation
-    case voiceGate
     case voiceGuard
     case voiceMode
     case model
@@ -141,12 +138,10 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "Shortcuts"
         case .dictation:
             "Dictation"
-        case .voiceGate:
-            "Voice Gate"
         case .voiceGuard:
-            "Voice Guard"
+            "Trusted Voice"
         case .voiceMode:
-            "Voice Mode"
+            "Assistant"
         case .model:
             "Model"
         case .history:
@@ -168,8 +163,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "keyboard"
         case .dictation:
             "mic"
-        case .voiceGate:
-            "ear"
         case .voiceGuard:
             "person.wave.2"
         case .voiceMode:

@@ -113,7 +113,7 @@ struct SpeakerVerifierProcessRunner: SpeakerVerifierProcessRunning {
             return executableURL
         }
 
-        throw AppError.speakerVerificationFailed(details: "Python 3 was not found. Install Python and SpeechBrain to use Voice Guard.")
+        throw AppError.speakerVerificationFailed(details: "Python 3 was not found. Install Python and SpeechBrain to use Trusted Voice.")
     }
 
     private static func managedVirtualEnvironmentPythonURL() -> URL? {

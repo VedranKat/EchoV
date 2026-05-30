@@ -51,13 +51,24 @@ struct UnconfiguredLocalTextGenerationEngine: LocalTextGenerationEngine {
 }
 
 struct Gemma4LocalTextGenerationEngine: LocalTextGenerationEngine {
-    let id = "gemma-4-e2b-it"
-    let displayName = "Gemma 4 E2B IT"
+    let id: String
+    let displayName: String
 
     private let runtime: LlamaServerTextGenerationEngine
 
-    init(modelURL: URL, runtimeURL: URL?) {
-        guard let ggufModelURL = Gemma4PostProcessingModelLayout.ggufModelFileCandidate(for: modelURL) else {
+    init(
+        modelURL: URL,
+        runtimeURL: URL?,
+        modelDefinition: PostProcessingModelDefinition = .defaultModel,
+        displayName: String? = nil
+    ) {
+        self.id = modelDefinition.id
+        self.displayName = displayName ?? modelDefinition.displayName
+
+        guard let ggufModelURL = Gemma4PostProcessingModelLayout.ggufModelFileCandidate(
+            for: modelURL,
+            definition: modelDefinition
+        ) else {
             self.runtime = LlamaServerTextGenerationEngine(modelURL: modelURL, runtimeURL: runtimeURL)
             return
         }

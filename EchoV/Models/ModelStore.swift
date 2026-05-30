@@ -14,6 +14,8 @@ final class ModelStore {
     private let asrBookmarkKey = "selectedASRModelBookmark"
     private let llamaRuntimeBookmarkKey = "selectedLlamaRuntimeBookmark"
     private let postProcessingBookmarkKey = "selectedPostProcessingModelBookmark"
+    private let postProcessingModelDefinitionKey = "selectedPostProcessingModelDefinition"
+    private var postProcessingInstallStates: [String: ModelInstallState] = [:]
 
     var selectedASRModel: ASRModelSelection?
     var validation: ModelValidationResult = .notSelected
@@ -22,8 +24,26 @@ final class ModelStore {
     var llamaRuntimeValidation: ModelValidationResult = .notSelected
     var llamaRuntimeInstallState: ModelInstallState = .idle
     var selectedPostProcessingModel: PostProcessingModelSelection?
+    var selectedPostProcessingModelDefinition: PostProcessingModelDefinition = .defaultModel
     var postProcessingValidation: ModelValidationResult = .notSelected
-    var postProcessingInstallState: ModelInstallState = .idle
+    var postProcessingInstallState: ModelInstallState {
+        get {
+            postProcessingInstallState(for: selectedPostProcessingModelDefinition)
+        }
+        set {
+            setPostProcessingInstallState(newValue, for: selectedPostProcessingModelDefinition)
+        }
+    }
+    var isAnyPostProcessingModelInstalling: Bool {
+        postProcessingInstallStates.values.contains { $0.isInstalling }
+    }
+    var canDeleteSelectedManagedPostProcessingModel: Bool {
+        postProcessingInstallState == .installed && !isAnyPostProcessingModelInstalling
+    }
+    var isSelectedPostProcessingModelReady: Bool {
+        selectedPostProcessingModel?.modelDefinition == selectedPostProcessingModelDefinition
+            && selectedPostProcessingModel?.validation.isValid == true
+    }
     var speakerVerifierRuntimeInstallState: ModelInstallState = .idle
 
     init(
@@ -47,6 +67,7 @@ final class ModelStore {
     func restoreSelection() async {
         await restoreASRSelection()
         await restoreLlamaRuntimeSelection()
+        restorePostProcessingModelDefinition()
         await restorePostProcessingSelection()
         await refreshManagedInstallState()
     }
@@ -103,13 +124,47 @@ final class ModelStore {
         llamaRuntimeValidation = result
         selectedLlamaRuntime = LlamaRuntimeSelection(
             url: url,
-            displayName: url.lastPathComponent,
+            displayName: llamaRuntimeDisplayName(for: url),
             selectedAt: Date(),
             validation: result
         )
     }
 
     func selectPostProcessingModel(at url: URL) async {
+        await selectPostProcessingModel(at: url, modelDefinition: selectedPostProcessingModelDefinition)
+    }
+
+    func selectPostProcessingModelDefinition(_ definition: PostProcessingModelDefinition) async {
+        guard definition != selectedPostProcessingModelDefinition else {
+            return
+        }
+
+        let previousSelection = selectedPostProcessingModel
+        let previousSelectionWasManaged = previousSelection
+            .map { Gemma4PostProcessingModelLayout.managedModelDefinition(for: $0.url) != nil }
+            ?? false
+
+        selectedPostProcessingModelDefinition = definition
+        userDefaults.set(definition.id, forKey: postProcessingModelDefinitionKey)
+
+        if let previousSelection, !previousSelectionWasManaged {
+            await selectPostProcessingModel(at: previousSelection.url, modelDefinition: definition)
+            return
+        }
+
+        if await selectInstalledManagedPostProcessingModelIfAvailable(for: definition) {
+            return
+        }
+
+        userDefaults.removeObject(forKey: postProcessingBookmarkKey)
+        selectedPostProcessingModel = nil
+        postProcessingValidation = .notSelected
+    }
+
+    private func selectPostProcessingModel(
+        at url: URL,
+        modelDefinition: PostProcessingModelDefinition
+    ) async {
         do {
             try persistBookmark(for: url, key: postProcessingBookmarkKey)
         } catch {
@@ -128,11 +183,12 @@ final class ModelStore {
             }
         }
 
-        let result = await validator.validatePostProcessingModel(at: url)
+        let result = await validator.validatePostProcessingModel(at: url, modelDefinition: modelDefinition)
         postProcessingValidation = result
         selectedPostProcessingModel = PostProcessingModelSelection(
             url: url,
-            displayName: url.lastPathComponent,
+            displayName: postProcessingModelDisplayName(for: url, modelDefinition: modelDefinition),
+            modelDefinition: modelDefinition,
             selectedAt: Date(),
             validation: result
         )
@@ -195,30 +251,71 @@ final class ModelStore {
     }
 
     func installManagedPostProcessingModel() async {
-        guard !postProcessingInstallState.isInstalling else {
+        guard !isAnyPostProcessingModelInstalling else {
             return
         }
 
-        postProcessingInstallState = .installing("Starting Gemma download...")
+        let modelDefinition = selectedPostProcessingModelDefinition
+        setPostProcessingInstallState(
+            .installing("Starting \(modelDefinition.displayName) download..."),
+            for: modelDefinition
+        )
 
         do {
             let proxySettings = proxySettings()
             guard proxySettings.isValid else {
-                postProcessingInstallState = .failed(Self.invalidProxyMessage(prefix: "Gemma install failed"))
+                setPostProcessingInstallState(
+                    .failed(Self.invalidProxyMessage(prefix: "\(modelDefinition.displayName) install failed")),
+                    for: modelDefinition
+                )
                 return
             }
 
-            let url = try await postProcessingInstaller.install(proxySettings: proxySettings) { [weak self] detail in
+            let url = try await postProcessingInstaller.install(
+                modelDefinition: modelDefinition,
+                proxySettings: proxySettings
+            ) { [weak self] detail in
                 Task { @MainActor in
-                    self?.postProcessingInstallState = .installing(detail)
+                    self?.setPostProcessingInstallState(.installing(detail), for: modelDefinition)
                 }
             }
-            postProcessingInstallState = .installed
-            await selectPostProcessingModel(at: url)
+            setPostProcessingInstallState(.installed, for: modelDefinition)
+
+            if selectedPostProcessingModelDefinition == modelDefinition {
+                await selectPostProcessingModel(at: url, modelDefinition: modelDefinition)
+            }
         } catch {
-            let message = "Gemma install failed: \(error.localizedDescription)"
+            let message = "\(modelDefinition.displayName) install failed: \(error.localizedDescription)"
             DiagnosticLog.write(message)
-            postProcessingInstallState = .failed(message)
+            setPostProcessingInstallState(.failed(message), for: modelDefinition)
+        }
+    }
+
+    func deleteManagedPostProcessingModel() async {
+        let modelDefinition = selectedPostProcessingModelDefinition
+        guard !isAnyPostProcessingModelInstalling else {
+            return
+        }
+
+        let managedURL = Gemma4PostProcessingModelLayout.managedModelURL(for: modelDefinition)
+
+        do {
+            if FileManager.default.fileExists(atPath: managedURL.path) {
+                try FileManager.default.removeItem(at: managedURL)
+            }
+
+            setPostProcessingInstallState(.idle, for: modelDefinition)
+
+            if
+                let selection = selectedPostProcessingModel,
+                Gemma4PostProcessingModelLayout.isManagedModelURL(selection.url, for: modelDefinition)
+            {
+                clearPostProcessingSelection()
+            }
+        } catch {
+            let message = "\(modelDefinition.displayName) delete failed: \(error.localizedDescription)"
+            DiagnosticLog.write(message)
+            setPostProcessingInstallState(.failed(message), for: modelDefinition)
         }
     }
 
@@ -258,9 +355,15 @@ final class ModelStore {
         let llamaRuntimeResult = await validator.validateLlamaRuntime(at: llamaRuntimeURL)
         llamaRuntimeInstallState = llamaRuntimeResult.isValid ? .installed : .idle
 
-        let postProcessingURL = Gemma4PostProcessingModelLayout.managedModelURL
-        let postProcessingResult = await validator.validatePostProcessingModel(at: postProcessingURL)
-        postProcessingInstallState = postProcessingResult.isValid ? .installed : .idle
+        for modelDefinition in PostProcessingModelDefinition.allCases
+            where !postProcessingInstallState(for: modelDefinition).isInstalling {
+            let postProcessingURL = Gemma4PostProcessingModelLayout.managedModelURL(for: modelDefinition)
+            let postProcessingResult = await validator.validatePostProcessingModel(
+                at: postProcessingURL,
+                modelDefinition: modelDefinition
+            )
+            setPostProcessingInstallState(postProcessingResult.isValid ? .installed : .idle, for: modelDefinition)
+        }
 
         let speakerVerifierURL = SpeakerVerifierRuntimeLayout.managedRuntimeURL
         let speakerVerifierResult = await validator.validateSpeakerVerifierRuntime(at: speakerVerifierURL)
@@ -287,6 +390,17 @@ final class ModelStore {
 
     private static func invalidProxyMessage(prefix: String) -> String {
         "\(prefix): Proxy settings are incomplete. Enter host names and ports from 1 to 65535."
+    }
+
+    func postProcessingInstallState(for definition: PostProcessingModelDefinition) -> ModelInstallState {
+        postProcessingInstallStates[definition.id] ?? .idle
+    }
+
+    private func setPostProcessingInstallState(
+        _ state: ModelInstallState,
+        for definition: PostProcessingModelDefinition
+    ) {
+        postProcessingInstallStates[definition.id] = state
     }
 
     private func restoreASRSelection() async {
@@ -348,7 +462,11 @@ final class ModelStore {
 
         do {
             let url = try restoreBookmarkedURL(from: bookmarkData, key: postProcessingBookmarkKey)
-            await selectPostProcessingModel(at: url)
+            let modelDefinition = Gemma4PostProcessingModelLayout.managedModelDefinition(for: url)
+                ?? selectedPostProcessingModelDefinition
+            selectedPostProcessingModelDefinition = modelDefinition
+            userDefaults.set(modelDefinition.id, forKey: postProcessingModelDefinitionKey)
+            await selectPostProcessingModel(at: url, modelDefinition: modelDefinition)
         } catch {
             selectedPostProcessingModel = nil
             postProcessingValidation = ModelValidationResult(
@@ -381,5 +499,53 @@ final class ModelStore {
             relativeTo: nil
         )
         userDefaults.set(bookmarkData, forKey: key)
+    }
+
+    private func restorePostProcessingModelDefinition() {
+        guard
+            let id = userDefaults.string(forKey: postProcessingModelDefinitionKey),
+            let definition = PostProcessingModelDefinition.definition(forID: id)
+        else {
+            selectedPostProcessingModelDefinition = .defaultModel
+            userDefaults.removeObject(forKey: postProcessingModelDefinitionKey)
+            return
+        }
+
+        selectedPostProcessingModelDefinition = definition
+    }
+
+    private func selectInstalledManagedPostProcessingModelIfAvailable(
+        for definition: PostProcessingModelDefinition
+    ) async -> Bool {
+        let managedURL = Gemma4PostProcessingModelLayout.managedModelURL(for: definition)
+        let result = await validator.validatePostProcessingModel(at: managedURL, modelDefinition: definition)
+
+        guard result.isValid else {
+            setPostProcessingInstallState(.idle, for: definition)
+            return false
+        }
+
+        setPostProcessingInstallState(.installed, for: definition)
+        await selectPostProcessingModel(at: managedURL, modelDefinition: definition)
+        return true
+    }
+
+    private func postProcessingModelDisplayName(
+        for url: URL,
+        modelDefinition: PostProcessingModelDefinition
+    ) -> String {
+        if Gemma4PostProcessingModelLayout.isManagedModelURL(url, for: modelDefinition) {
+            return modelDefinition.displayName
+        }
+
+        return url.lastPathComponent
+    }
+
+    private func llamaRuntimeDisplayName(for url: URL) -> String {
+        if url.standardizedFileURL.path == LlamaRuntimeLayout.managedRuntimeURL.standardizedFileURL.path {
+            return LlamaRuntimeLayout.displayName
+        }
+
+        return url.lastPathComponent
     }
 }

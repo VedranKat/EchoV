@@ -97,7 +97,7 @@ struct TranscriptionSettingsView: View {
                     }
                 }
 
-                SettingsCard("Post-processing", subtitle: "Use Gemma 4 E2B locally to clean dictated text after transcription.") {
+                SettingsCard("Post-processing", subtitle: "Use Gemma 4 locally to clean dictated text after transcription.") {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "wand.and.sparkles",
@@ -112,6 +112,7 @@ struct TranscriptionSettingsView: View {
                                 )
                             )
                             .labelsHidden()
+                            .disabled(!container.canEnablePostProcessing && !container.settings.isPostProcessingEnabled)
                         }
 
                         DividerLine()
@@ -198,7 +199,7 @@ struct TranscriptionSettingsView: View {
 
                             SetupHelpButton(
                                 title: "llama.cpp runtime",
-                                message: "Select any compatible llama.cpp runtime folder containing executable llama-server. EchoV's managed download uses tested stable \(LlamaRuntimeLayout.version)."
+                                message: "Select any compatible llama.cpp runtime folder containing executable llama-server. EchoV's managed download uses tested \(LlamaRuntimeLayout.versionDisplayName)."
                             )
 
                             Button {
@@ -209,6 +210,16 @@ struct TranscriptionSettingsView: View {
                             .disabled(container.modelStore.selectedLlamaRuntime == nil)
 
                             Spacer()
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "brain",
+                            title: "Gemma model",
+                            subtitle: postProcessingModelPickerSubtitle
+                        ) {
+                            postProcessingModelPicker
                         }
 
                         DividerLine()
@@ -241,19 +252,28 @@ struct TranscriptionSettingsView: View {
 
                             Spacer()
 
-                            Button {
-                                installManagedPostProcessingModel()
-                            } label: {
-                                Label(
-                                    container.modelStore.postProcessingInstallState.isInstalling ? "Installing..." : "Download",
-                                    systemImage: "arrow.down.circle"
+                            HStack(spacing: 8) {
+                                Button {
+                                    installManagedPostProcessingModel()
+                                } label: {
+                                    Label(
+                                        container.modelStore.postProcessingInstallState.isInstalling ? "Installing..." : "Download",
+                                        systemImage: "arrow.down.circle"
+                                    )
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(
+                                    container.modelStore.isAnyPostProcessingModelInstalling
+                                        || container.modelStore.selectedLlamaRuntime?.validation.isValid != true
                                 )
+
+                                Button(role: .destructive) {
+                                    deleteManagedPostProcessingModel()
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .disabled(!container.modelStore.canDeleteSelectedManagedPostProcessingModel)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(
-                                container.modelStore.postProcessingInstallState.isInstalling
-                                    || container.modelStore.selectedLlamaRuntime?.validation.isValid != true
-                            )
                         }
 
                         DividerLine()
@@ -287,7 +307,7 @@ struct TranscriptionSettingsView: View {
 
                             SetupHelpButton(
                                 title: "Gemma folder",
-                                message: "Select \(Gemma4PostProcessingModelLayout.expectedFolderName), \(Gemma4PostProcessingModelLayout.modelID), or a parent folder. The selected folder must contain \(Gemma4PostProcessingModelLayout.ggufFileName) or another .gguf file."
+                                message: "Select \(selectedPostProcessingModelDefinition.expectedFolderName), \(selectedPostProcessingModelDefinition.modelID), or a parent folder. The selected folder must contain \(selectedPostProcessingModelDefinition.ggufFileName) or another .gguf file."
                             )
 
                             Button {
@@ -398,9 +418,46 @@ struct TranscriptionSettingsView: View {
     }
 
     private var postProcessingSubtitle: String {
-        container.settings.isPostProcessingEnabled
-            ? "Enabled. EchoV will keep the selected post-processing model ready."
-            : "Disabled. EchoV will insert the raw transcript."
+        if container.settings.isPostProcessingEnabled {
+            return "Enabled. EchoV will keep the selected post-processing model ready."
+        }
+
+        guard container.canEnablePostProcessing else {
+            return container.postProcessingUnavailableDetail
+        }
+
+        return "Ready. Enable Prime to clean dictated text after transcription."
+    }
+
+    private var selectedPostProcessingModelDefinition: PostProcessingModelDefinition {
+        container.modelStore.selectedPostProcessingModelDefinition
+    }
+
+    private var postProcessingModelPickerSubtitle: String {
+        "\(selectedPostProcessingModelDefinition.displayName): \(selectedPostProcessingModelDefinition.summary) Managed download uses \(selectedPostProcessingModelDefinition.quantization)."
+    }
+
+    private var postProcessingModelPicker: some View {
+        Picker(
+            "",
+            selection: Binding(
+                get: { container.modelStore.selectedPostProcessingModelDefinition },
+                set: { definition in
+                    Task {
+                        await container.selectPostProcessingModelDefinition(definition)
+                    }
+                }
+            )
+        ) {
+            ForEach(PostProcessingModelDefinition.allCases) { definition in
+                Text(definition.shortName)
+                    .tag(definition)
+                    .help(definition.displayName)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(width: 180)
     }
 
     private var postProcessingTitle: String {
@@ -408,7 +465,7 @@ struct TranscriptionSettingsView: View {
             return model.displayName
         }
 
-        return Gemma4PostProcessingModelLayout.displayName
+        return selectedPostProcessingModelDefinition.displayName
     }
 
     private var vocabularySubtitle: String {
@@ -518,12 +575,12 @@ struct TranscriptionSettingsView: View {
 
     private var llamaRuntimeInstallMessage: String {
         if !container.settings.isPostProcessingEnabled {
-            return "Prime is off. llama-server will stay stopped."
+            return "Prime is off."
         }
 
         return switch container.modelStore.llamaRuntimeInstallState {
         case .idle:
-            "Managed download: ggml-org/llama.cpp / \(LlamaRuntimeLayout.archiveFileName)"
+            "Managed download: \(LlamaRuntimeLayout.versionDisplayName) / \(LlamaRuntimeLayout.archiveFileName)"
         default:
             container.modelStore.llamaRuntimeInstallState.message
         }
@@ -580,7 +637,7 @@ struct TranscriptionSettingsView: View {
     private var postProcessingInstallMessage: String {
         switch container.modelStore.postProcessingInstallState {
         case .idle:
-            "Managed download: \(Gemma4PostProcessingModelLayout.ggufRepositoryID) / \(Gemma4PostProcessingModelLayout.ggufFileName)"
+            "Managed download: \(selectedPostProcessingModelDefinition.ggufRepositoryID) / \(selectedPostProcessingModelDefinition.ggufFileName)"
         default:
             container.modelStore.postProcessingInstallState.message
         }
@@ -597,6 +654,10 @@ struct TranscriptionSettingsView: View {
 
         if container.modelStore.selectedPostProcessingModel?.validation.isValid == true {
             return "Ready"
+        }
+
+        if container.modelStore.postProcessingInstallState.isInstalling {
+            return "Installing"
         }
 
         if case .failed = container.modelStore.postProcessingInstallState {
@@ -617,6 +678,10 @@ struct TranscriptionSettingsView: View {
 
         if container.modelStore.selectedPostProcessingModel?.validation.isValid == true {
             return .success
+        }
+
+        if container.modelStore.postProcessingInstallState.isInstalling {
+            return .active
         }
 
         if case .failed = container.modelStore.postProcessingInstallState {
@@ -643,6 +708,12 @@ struct TranscriptionSettingsView: View {
     private func installManagedPostProcessingModel() {
         Task {
             await container.installManagedPostProcessingModel()
+        }
+    }
+
+    private func deleteManagedPostProcessingModel() {
+        Task {
+            await container.deleteManagedPostProcessingModel()
         }
     }
 

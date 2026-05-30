@@ -302,7 +302,7 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
         }
 
         guard let candidateURL, let candidateStartedAt else {
-            fail(.recordingFailed(details: "Voice Gate did not create an audio file."))
+            fail(.recordingFailed(details: "Hands-free did not create an audio file."))
             return
         }
 
@@ -363,7 +363,7 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
 
     private func write(_ buffer: AVAudioPCMBuffer) throws {
         guard let audioFile else {
-            throw AppError.recordingFailed(details: "Voice Gate audio file is not open.")
+            throw AppError.recordingFailed(details: "Hands-free audio file is not open.")
         }
 
         try audioFile.write(from: buffer)

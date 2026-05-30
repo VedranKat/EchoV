@@ -30,7 +30,7 @@ struct ShortcutsSettingsView: View {
                     }
                 }
 
-                SettingsCard("Voice Commands", subtitle: "Fixed phrases that Voice Mode listens for while EchoV is running.") {
+                SettingsCard("Assistant Commands", subtitle: "Fixed phrases that Assistant listens for while EchoV is running.") {
                     VStack(spacing: 12) {
                         ForEach(Array(voiceCommands.enumerated()), id: \.element.title) { index, command in
                             VoiceCommandReferenceRow(
@@ -63,12 +63,12 @@ struct ShortcutsSettingsView: View {
                 commands: [.toggle, .pushToTalk, .stop]
             ),
             ShortcutCommandGroup(
-                title: "Voice Gate",
+                title: "Hands-free",
                 subtitle: "Listen locally and record when speech starts.",
                 commands: [.voiceGate]
             ),
             ShortcutCommandGroup(
-                title: "Voice Mode",
+                title: "Assistant",
                 subtitle: "Start spoken or text-response requests without saying a wake command.",
                 commands: [.voiceModeVoice, .voiceModeText]
             ),
@@ -78,7 +78,7 @@ struct ShortcutsSettingsView: View {
                 commands: [.prime]
             ),
             ShortcutCommandGroup(
-                title: "Voice Guard",
+                title: "Trusted Voice",
                 subtitle: "Toggle speaker verification for selected voice workflows.",
                 commands: [.voiceGuard]
             )
@@ -90,7 +90,7 @@ struct ShortcutsSettingsView: View {
             VoiceCommandReference(
                 icon: "speaker.wave.2.bubble",
                 title: "Computer",
-                subtitle: "Starts a spoken-answer Voice Mode request."
+                subtitle: "Starts a spoken-answer Assistant request."
             ),
             VoiceCommandReference(
                 icon: "text.bubble",
@@ -232,15 +232,15 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
         case .stop:
             "Stop EchoV"
         case .voiceGate:
-            "Voice Gate"
+            "Hands-free"
         case .voiceModeVoice:
-            "Voice Mode Voice"
+            "Assistant Voice"
         case .voiceModeText:
-            "Voice Mode Text"
+            "Assistant Text"
         case .prime:
             "Prime"
         case .voiceGuard:
-            "Voice Guard"
+            "Trusted Voice"
         }
     }
 
@@ -255,25 +255,25 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
         case (.stop, _):
             "Stop EchoV"
         case (.voiceGate, .settings):
-            "Voice Gate hotkey"
+            "Hands-free hotkey"
         case (.voiceGate, .shortcuts):
-            "Voice Gate"
+            "Hands-free"
         case (.voiceModeVoice, .settings):
-            "Manual voice activation"
+            "Manual spoken activation"
         case (.voiceModeVoice, .shortcuts):
-            "Voice Mode Voice"
+            "Assistant Voice"
         case (.voiceModeText, .settings):
             "Manual text activation"
         case (.voiceModeText, .shortcuts):
-            "Voice Mode Text"
+            "Assistant Text"
         case (.prime, .settings):
             "Prime hotkey"
         case (.prime, .shortcuts):
             "Prime"
         case (.voiceGuard, .settings):
-            "Voice Guard hotkey"
+            "Trusted Voice hotkey"
         case (.voiceGuard, .shortcuts):
-            "Voice Guard"
+            "Trusted Voice"
         }
     }
 
@@ -286,7 +286,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
         case .stop:
             "Cancel active listening, recording, generation, or speech."
         case .voiceGate:
-            "Press once to listen for speech, then press again to mute."
+            "Press once to listen hands-free, then press again to mute."
         case .voiceModeVoice:
             "Start spoken-answer listening without saying Computer."
         case .voiceModeText:
@@ -294,7 +294,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
         case .prime:
             "Toggle Prime post-processing on or off."
         case .voiceGuard:
-            "Toggle the master Voice Guard switch. Target selections are preserved."
+            "Toggle the master Trusted Voice switch. Target selections are preserved."
         }
     }
 

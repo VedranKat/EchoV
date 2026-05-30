@@ -54,13 +54,13 @@ enum AppError: LocalizedError, Equatable {
         case .cleanupFailed:
             "Text cleanup failed."
         case .voiceModeResponseNotConfigured:
-            "Configure the Voice Mode cloud response provider before using it."
+            "Configure the Assistant cloud response provider before using it."
         case .voiceModeResponseFailed:
-            "Voice Mode response failed."
+            "Assistant response failed."
         case .speechOutputFailed:
             "Voice response failed."
         case .speakerVerificationFailed:
-            "Voice match failed."
+            "Trusted Voice check failed."
         case .insertionFailed:
             "Paste insertion failed; the transcript was copied to the clipboard."
         case .unknown:

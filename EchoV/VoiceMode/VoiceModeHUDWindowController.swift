@@ -212,7 +212,7 @@ private struct VoiceModeHUDView: View {
 
         switch container.appState.state {
         case .voiceModeWakeListening:
-            return "Voice Mode"
+            return "Assistant"
         case .voiceModeCheckingWakePhrase:
             return "Checking Command"
         case .voiceModePromptListening:

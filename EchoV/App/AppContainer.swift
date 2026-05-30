@@ -30,11 +30,11 @@ final class AppContainer {
         var emptyWindowsError: String {
             switch self {
             case .voiceGate:
-                "Voice Gate did not create audio windows for speaker verification."
+                "Hands-free did not create audio windows for speaker verification."
             case .voiceModeCommand:
-                "Voice Mode did not create command audio windows for speaker verification."
+                "Assistant did not create command audio windows for speaker verification."
             case .voiceModeRequest:
-                "Voice Mode did not create request audio windows for speaker verification."
+                "Assistant did not create request audio windows for speaker verification."
             }
         }
 
@@ -357,7 +357,7 @@ final class AppContainer {
         }
 
         guard binding == nil || binding != settings.voiceGateHotkey else {
-            appState.lastError = .hotkeyUnavailable(details: "Toggle and Voice Gate cannot use the same hotkey.")
+            appState.lastError = .hotkeyUnavailable(details: "Toggle and Hands-free cannot use the same hotkey.")
             return
         }
 
@@ -377,7 +377,7 @@ final class AppContainer {
         }
 
         guard binding == nil || binding != settings.voiceGateHotkey else {
-            appState.lastError = .hotkeyUnavailable(details: "Push-to-talk and Voice Gate cannot use the same hotkey.")
+            appState.lastError = .hotkeyUnavailable(details: "Push-to-talk and Hands-free cannot use the same hotkey.")
             return
         }
 
@@ -387,17 +387,17 @@ final class AppContainer {
 
     func setVoiceGateHotkey(_ binding: HotkeyBinding?) {
         guard isHotkeyAvailable(binding, excluding: \.voiceGateHotkey) else {
-            appState.lastError = .hotkeyUnavailable(details: "Voice Gate cannot use the same hotkey as another EchoV shortcut.")
+            appState.lastError = .hotkeyUnavailable(details: "Hands-free cannot use the same hotkey as another EchoV shortcut.")
             return
         }
 
         guard binding == nil || binding != settings.toggleHotkey else {
-            appState.lastError = .hotkeyUnavailable(details: "Voice Gate and toggle cannot use the same hotkey.")
+            appState.lastError = .hotkeyUnavailable(details: "Hands-free and toggle cannot use the same hotkey.")
             return
         }
 
         guard binding == nil || binding != settings.pushToTalkHotkey else {
-            appState.lastError = .hotkeyUnavailable(details: "Voice Gate and push-to-talk cannot use the same hotkey.")
+            appState.lastError = .hotkeyUnavailable(details: "Hands-free and push-to-talk cannot use the same hotkey.")
             return
         }
 
@@ -417,7 +417,7 @@ final class AppContainer {
 
     func setVoiceGateVerifierToggleHotkey(_ binding: HotkeyBinding?) {
         guard isHotkeyAvailable(binding, excluding: \.voiceGateVerifierToggleHotkey) else {
-            appState.lastError = .hotkeyUnavailable(details: "Voice Guard cannot use the same hotkey as another EchoV shortcut.")
+            appState.lastError = .hotkeyUnavailable(details: "Trusted Voice cannot use the same hotkey as another EchoV shortcut.")
             return
         }
 
@@ -427,7 +427,7 @@ final class AppContainer {
 
     func setVoiceModeActivationHotkey(_ binding: HotkeyBinding?) {
         guard isHotkeyAvailable(binding, excluding: \.voiceModeActivationHotkey) else {
-            appState.lastError = .hotkeyUnavailable(details: "Voice Mode cannot use the same hotkey as another EchoV shortcut.")
+            appState.lastError = .hotkeyUnavailable(details: "Assistant cannot use the same hotkey as another EchoV shortcut.")
             return
         }
 
@@ -437,7 +437,7 @@ final class AppContainer {
 
     func setVoiceModeTextActivationHotkey(_ binding: HotkeyBinding?) {
         guard isHotkeyAvailable(binding, excluding: \.voiceModeTextActivationHotkey) else {
-            appState.lastError = .hotkeyUnavailable(details: "Voice Mode text cannot use the same hotkey as another EchoV shortcut.")
+            appState.lastError = .hotkeyUnavailable(details: "Assistant text cannot use the same hotkey as another EchoV shortcut.")
             return
         }
 
@@ -620,8 +620,34 @@ final class AppContainer {
     }
 
     func setPostProcessingEnabled(_ isEnabled: Bool) {
+        guard !isEnabled || canEnablePostProcessing else {
+            settings.isPostProcessingEnabled = false
+            configurePostProcessingEngineFromSelectedModel()
+            appState.lastError = .cleanupModelNotConfigured
+            appState.lastDetail = postProcessingUnavailableDetail
+            appState.notifyStatusChanged()
+            return
+        }
+
         settings.isPostProcessingEnabled = isEnabled
         configurePostProcessingEngineFromSelectedModel()
+    }
+
+    var canEnablePostProcessing: Bool {
+        modelStore.selectedLlamaRuntime?.validation.isValid == true
+            && modelStore.isSelectedPostProcessingModelReady
+    }
+
+    var postProcessingUnavailableDetail: String {
+        if modelStore.selectedLlamaRuntime?.validation.isValid != true {
+            return "Install the llama.cpp runtime before enabling Prime."
+        }
+
+        if !modelStore.isSelectedPostProcessingModelReady {
+            return "Download \(modelStore.selectedPostProcessingModelDefinition.displayName) before enabling Prime."
+        }
+
+        return "Prime is ready."
     }
 
     func setPrimeAppAwareFormattingEnabled(_ isEnabled: Bool) {
@@ -779,7 +805,9 @@ final class AppContainer {
         return GemmaPrimeTextCleanupEngine(
             textGenerationEngine: Gemma4LocalTextGenerationEngine(
                 modelURL: selection.url,
-                runtimeURL: runtime.url
+                runtimeURL: runtime.url,
+                modelDefinition: selection.modelDefinition,
+                displayName: selection.displayName
             )
         )
     }
@@ -1021,7 +1049,12 @@ final class AppContainer {
     }
 
     func togglePostProcessingEnabledFromHotkey() {
-        setPostProcessingEnabled(!settings.isPostProcessingEnabled)
+        let requestedState = !settings.isPostProcessingEnabled
+        setPostProcessingEnabled(requestedState)
+        guard settings.isPostProcessingEnabled == requestedState else {
+            return
+        }
+
         appState.lastDetail = settings.isPostProcessingEnabled ? "Prime enabled." : "Prime disabled."
         appState.notifyStatusChanged()
     }
@@ -1029,7 +1062,7 @@ final class AppContainer {
     func setVoiceGuardEnabled(_ isEnabled: Bool) {
         guard isEnabled else {
             settings.isVoiceGuardEnabled = false
-            appState.lastDetail = "Voice Guard disabled."
+            appState.lastDetail = "Trusted Voice disabled."
             appState.notifyStatusChanged()
             return
         }
@@ -1040,7 +1073,7 @@ final class AppContainer {
 
         settings.isVoiceGuardEnabled = true
         appState.lastError = nil
-        appState.lastDetail = "Voice Guard enabled."
+        appState.lastDetail = "Trusted Voice enabled."
         appState.notifyStatusChanged()
     }
 
@@ -1051,21 +1084,21 @@ final class AppContainer {
     @discardableResult
     private func validateVoiceGuardCanEnable() -> Bool {
         guard speakerProfileStore.profile != nil else {
-            appState.lastError = .speakerVerificationFailed(details: "Record a voice profile before enabling Voice Guard.")
+            appState.lastError = .speakerVerificationFailed(details: "Record a voice profile before enabling Trusted Voice.")
             appState.lastDetail = "Voice profile is missing."
             appState.notifyStatusChanged()
             return false
         }
 
         guard speakerProfileStore.profile?.modelID == SpeakerVerifierRuntimeLayout.modelID else {
-            appState.lastError = .speakerVerificationFailed(details: "Re-enroll your voice profile before enabling Voice Guard.")
+            appState.lastError = .speakerVerificationFailed(details: "Re-enroll your voice profile before enabling Trusted Voice.")
             appState.lastDetail = "Voice profile needs to be re-enrolled."
             appState.notifyStatusChanged()
             return false
         }
 
         guard SpeakerVerifierRuntimeLayout.isInstalled() else {
-            appState.lastError = .speakerVerificationFailed(details: "Install the speaker verifier before enabling Voice Guard.")
+            appState.lastError = .speakerVerificationFailed(details: "Install the speaker verifier before enabling Trusted Voice.")
             appState.lastDetail = "Speaker verifier is not installed."
             appState.notifyStatusChanged()
             return false
@@ -1076,11 +1109,19 @@ final class AppContainer {
 
     func selectPostProcessingModel(at url: URL) async {
         await modelStore.selectPostProcessingModel(at: url)
+        disablePostProcessingIfUnavailable()
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func selectPostProcessingModelDefinition(_ definition: PostProcessingModelDefinition) async {
+        await modelStore.selectPostProcessingModelDefinition(definition)
+        disablePostProcessingIfUnavailable()
         configurePostProcessingEngineFromSelectedModel()
     }
 
     func clearPostProcessingModelSelection() {
         modelStore.clearPostProcessingSelection()
+        disablePostProcessingIfUnavailable()
         configurePostProcessingEngineFromSelectedModel()
     }
 
@@ -1091,17 +1132,35 @@ final class AppContainer {
 
     func selectLlamaRuntime(at url: URL) async {
         await modelStore.selectLlamaRuntime(at: url)
+        disablePostProcessingIfUnavailable()
         configurePostProcessingEngineFromSelectedModel()
     }
 
     func clearLlamaRuntimeSelection() {
         modelStore.clearLlamaRuntimeSelection()
+        disablePostProcessingIfUnavailable()
         configurePostProcessingEngineFromSelectedModel()
     }
 
     func installManagedPostProcessingModel() async {
         await modelStore.installManagedPostProcessingModel()
         configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func deleteManagedPostProcessingModel() async {
+        await modelStore.deleteManagedPostProcessingModel()
+        disablePostProcessingIfUnavailable()
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    private func disablePostProcessingIfUnavailable() {
+        guard settings.isPostProcessingEnabled, !canEnablePostProcessing else {
+            return
+        }
+
+        settings.isPostProcessingEnabled = false
+        appState.lastDetail = "Prime disabled. \(postProcessingUnavailableDetail)"
+        appState.notifyStatusChanged()
     }
 
     private func configureASREngineFromSelectedModel() {
@@ -1172,6 +1231,10 @@ final class AppContainer {
     }
 
     private func configurePostProcessingEngineFromSelectedModel() {
+        if settings.isPostProcessingEnabled, !canEnablePostProcessing {
+            settings.isPostProcessingEnabled = false
+        }
+
         let previousTextGenerationEngine = localTextGenerationEngine
         let shouldKeepLocalTextModelReady =
             settings.isPostProcessingEnabled
@@ -1189,7 +1252,9 @@ final class AppContainer {
         {
             configuredEngine = Gemma4LocalTextGenerationEngine(
                 modelURL: selection.url,
-                runtimeURL: runtime.url
+                runtimeURL: runtime.url,
+                modelDefinition: selection.modelDefinition,
+                displayName: selection.displayName
             )
         } else {
             configuredEngine = UnconfiguredLocalTextGenerationEngine()
@@ -1298,7 +1363,7 @@ final class AppContainer {
             do {
                 try hotkeyService.register(hotkeyRegistrations(includeUtilityHotkeys: false))
                 appState.lastError = .hotkeyUnavailable(
-                    details: "Prime or Voice Guard hotkeys could not be registered, so EchoV kept the core dictation hotkeys active."
+                    details: "Prime or Trusted Voice hotkeys could not be registered, so EchoV kept the core dictation hotkeys active."
                 )
             } catch {
                 DiagnosticLog.write("Core hotkey registration failed: \(error.localizedDescription)")
@@ -1311,16 +1376,16 @@ final class AppContainer {
         var configuredHotkeys: [(String, HotkeyBinding?)] = [
             ("Toggle", settings.toggleHotkey),
             ("Push-to-talk", settings.pushToTalkHotkey),
-            ("Voice Gate", settings.voiceGateHotkey),
-            ("Voice Mode", settings.voiceModeActivationHotkey),
-            ("Voice Mode text", settings.voiceModeTextActivationHotkey),
+            ("Hands-free", settings.voiceGateHotkey),
+            ("Assistant", settings.voiceModeActivationHotkey),
+            ("Assistant text", settings.voiceModeTextActivationHotkey),
             ("Stop EchoV", settings.stopHotkey)
         ]
 
         if includeUtilityHotkeys {
             configuredHotkeys.append(contentsOf: [
                 ("Prime", settings.primeToggleHotkey),
-                ("Voice Guard", settings.voiceGateVerifierToggleHotkey)
+                ("Trusted Voice", settings.voiceGateVerifierToggleHotkey)
             ])
         }
 
@@ -1351,7 +1416,7 @@ final class AppContainer {
             let voiceGateHotkey = settings.voiceGateHotkey,
             toggleHotkey == voiceGateHotkey
         {
-            throw AppError.hotkeyUnavailable(details: "Toggle and Voice Gate cannot use the same hotkey.")
+            throw AppError.hotkeyUnavailable(details: "Toggle and Hands-free cannot use the same hotkey.")
         }
 
         if
@@ -1359,7 +1424,7 @@ final class AppContainer {
             let voiceGateHotkey = settings.voiceGateHotkey,
             pushToTalkHotkey == voiceGateHotkey
         {
-            throw AppError.hotkeyUnavailable(details: "Push-to-talk and Voice Gate cannot use the same hotkey.")
+            throw AppError.hotkeyUnavailable(details: "Push-to-talk and Hands-free cannot use the same hotkey.")
         }
 
         var registrations: [HotkeyRegistration] = []
@@ -1632,8 +1697,8 @@ final class AppContainer {
 
     private func handleVoiceModeHotkey(command: VoiceModeActivationCommand) async {
         guard settings.isVoiceModeEnabled else {
-            appState.lastError = .recordingFailed(details: "Enable Voice Mode before using its activation hotkey.")
-            appState.lastDetail = "Voice Mode is off."
+            appState.lastError = .recordingFailed(details: "Enable Assistant before using its activation hotkey.")
+            appState.lastDetail = "Assistant is off."
             appState.notifyStatusChanged()
             return
         }
@@ -1682,7 +1747,7 @@ final class AppContainer {
         }
 
         guard recordingTrigger == nil, appState.state.canStartRecording else {
-            appState.lastDetail = "Voice Mode will start after the current task finishes."
+            appState.lastDetail = "Assistant will start after the current task finishes."
             appState.notifyStatusChanged()
             return
         }
@@ -1747,7 +1812,7 @@ final class AppContainer {
         }
 
         appState.lastError = nil
-        appState.lastDetail = "Voice Gate is armed. Speak when ready."
+        appState.lastDetail = "Hands-free is armed. Speak when ready."
         setState(.listening)
 
         do {
@@ -1878,7 +1943,7 @@ final class AppContainer {
         workflow: VoiceGuardWorkflow
     ) async throws -> Bool {
         guard let profile = speakerProfileStore.profile else {
-            throw AppError.speakerVerificationFailed(details: "Turn off Voice Guard or record a voice profile first.")
+            throw AppError.speakerVerificationFailed(details: "Turn off Trusted Voice or record a voice profile first.")
         }
 
         let threshold = settings.voiceGateSpeakerMatchStrictness.minimumSimilarity
@@ -1963,7 +2028,7 @@ final class AppContainer {
         }
 
         recordingTrigger = nil
-        appState.lastDetail = "Voice Gate is muted."
+        appState.lastDetail = "Hands-free is muted."
         appState.notifyStatusChanged()
 
         if settings.isVoiceModeEnabled {

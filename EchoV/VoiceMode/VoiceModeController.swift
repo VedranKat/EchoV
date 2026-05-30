@@ -154,7 +154,7 @@ final class VoiceModeController {
         capture.stop()
         speechOutput.stop()
         if wasEnabled {
-            setState(.cancelled, detail: "Voice Mode stopped.")
+            setState(.cancelled, detail: "Assistant stopped.")
         }
         onStopped()
     }
@@ -169,7 +169,7 @@ final class VoiceModeController {
         appState.lastError = nil
         setState(
             .voiceModeWakeListening,
-            detail: detail ?? "Voice Mode is listening for Computer, Computer text, Continue, or Computer cleanup."
+            detail: detail ?? "Assistant is listening for Computer, Computer text, Continue, or Computer cleanup."
         )
 
         do {
@@ -454,7 +454,7 @@ final class VoiceModeController {
             }
 
             guard !response.isEmpty else {
-                throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty Voice Mode response.")
+                throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty Assistant response.")
             }
 
             switch delivery {
@@ -479,7 +479,7 @@ final class VoiceModeController {
                 return
             }
 
-            setState(.completed(Transcript(text: response, segments: [])), detail: "Voice Mode response completed.")
+            setState(.completed(Transcript(text: response, segments: [])), detail: "Assistant response completed.")
             await startWakeListening()
         } catch let error as AppError {
             guard isCurrentRun(runID) else {
@@ -515,7 +515,7 @@ final class VoiceModeController {
         }
 
         capture.stop()
-        setState(.cancelled, detail: "Voice Mode cancelled because no request followed \(command.displayName).")
+        setState(.cancelled, detail: "Assistant cancelled because no request followed \(command.displayName).")
         await startWakeListening()
     }
 

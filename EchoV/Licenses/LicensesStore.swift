@@ -21,6 +21,12 @@ struct LicensesStore: Sendable {
             notice: "Used as the downloadable or user-selected local post-processing model. Source: unsloth/gemma-4-E2B-it-GGUF, derived from Google DeepMind Gemma 4 E2B IT."
         ),
         ThirdPartyNotice(
+            id: "gemma-4-e4b-it-gguf",
+            name: "Gemma 4 E4B IT GGUF",
+            licenseName: "Apache-2.0",
+            notice: "Used as an optional downloadable or user-selected local post-processing model. Source: unsloth/gemma-4-E4B-it-GGUF, derived from Google DeepMind Gemma 4 E4B IT."
+        ),
+        ThirdPartyNotice(
             id: "llama-cpp",
             name: "llama.cpp",
             licenseName: "MIT",

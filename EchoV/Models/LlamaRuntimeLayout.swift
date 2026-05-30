@@ -2,7 +2,8 @@ import Foundation
 
 enum LlamaRuntimeLayout {
     static let version = "b9060"
-    static let displayName = "llama.cpp \(version)"
+    static let displayName = "llama.cpp runtime"
+    static let versionDisplayName = "llama.cpp build \(version)"
     static let archiveFileName = "llama-\(version)-bin-macos-arm64.tar.gz"
     static let expectedSHA256 = "dd89c0428d99fbcdbe39406cbfce56e2d5fb1b46d93047055ba576ea6d12fbaa"
     static let downloadURL = URL(

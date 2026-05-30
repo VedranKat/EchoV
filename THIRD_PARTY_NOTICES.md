@@ -11,6 +11,7 @@ EchoV includes, downloads, or directly supports the third-party components liste
 | SpeechBrain ECAPA-TDNN model | Optional Voice Gate speaker verification model converted/repackaged to ONNX for local runtime use; EchoV did not train or author the upstream model | Apache-2.0 | SpeechBrain `speechbrain/spkrec-ecapa-voxceleb`, https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb |
 | ONNX Runtime | Bundled macOS runtime library used by the Voice Gate speaker verifier helper | MIT | Microsoft, https://github.com/microsoft/onnxruntime |
 | Gemma 4 E2B IT GGUF | Downloadable or user-selected local post-processing model | Apache-2.0 | Unsloth `unsloth/gemma-4-E2B-it-GGUF`, derived from Google DeepMind Gemma 4 E2B IT, https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF |
+| Gemma 4 E4B IT GGUF | Optional downloadable or user-selected local post-processing model | Apache-2.0 | Unsloth `unsloth/gemma-4-E4B-it-GGUF`, derived from Google DeepMind Gemma 4 E4B IT, https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF |
 | llama.cpp | Downloadable or user-selected local GGUF inference runtime | MIT | Copyright (c) 2023-2026 The ggml authors, https://github.com/ggml-org/llama.cpp |
 | cpp-httplib | Bundled with llama.cpp for local HTTP serving | MIT | Copyright (c) 2017 yhirose, https://github.com/yhirose/cpp-httplib |
 | nlohmann/json | Bundled with llama.cpp for JSON handling | MIT | Copyright (c) 2013-2026 Niels Lohmann, https://github.com/nlohmann/json |
