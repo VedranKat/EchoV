@@ -31,6 +31,8 @@ struct TranscriptionSettingsView: View {
                                 HStack(spacing: 8) {
                                     Text(modelTitle)
                                         .font(.title3.weight(.semibold))
+                                        .lineLimit(2)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     StatusBadge(text: modelBadgeText, tone: modelTone)
                                 }
 
@@ -150,6 +152,8 @@ struct TranscriptionSettingsView: View {
                                 HStack(spacing: 8) {
                                     Text(llamaRuntimeTitle)
                                         .font(.title3.weight(.semibold))
+                                        .lineLimit(2)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     StatusBadge(text: llamaRuntimeBadgeText, tone: llamaRuntimeTone)
                                 }
 
@@ -224,13 +228,15 @@ struct TranscriptionSettingsView: View {
                                 HStack(spacing: 8) {
                                     Text(postProcessingTitle)
                                         .font(.title3.weight(.semibold))
+                                        .lineLimit(2)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     StatusBadge(text: postProcessingBadgeText, tone: postProcessingTone)
                                 }
 
-                            Text(postProcessingInstallMessage)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                Text(postProcessingInstallMessage)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
 
                             Spacer()
@@ -411,29 +417,30 @@ struct TranscriptionSettingsView: View {
 
     private var vocabularyEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 10) {
-                TextField("Term", text: $newVocabularyTerm)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 150)
+            ViewThatFits(in: .horizontal) {
+                vocabularyEditorControls
 
-                TextField("Aliases, comma separated", text: $newVocabularyAliases)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 220)
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("Term", text: $newVocabularyTerm)
+                        .textFieldStyle(.roundedBorder)
 
-                Picker("", selection: $newVocabularyAggressiveness) {
-                    ForEach(PrimeVocabularyAggressiveness.allCases) { aggressiveness in
-                        Text(aggressiveness.title).tag(aggressiveness)
+                    TextField("Aliases, comma separated", text: $newVocabularyAliases)
+                        .textFieldStyle(.roundedBorder)
+
+                    HStack(alignment: .center, spacing: 10) {
+                        vocabularyAggressivenessPicker
+                            .frame(width: 150)
+
+                        Button {
+                            addVocabularyEntry()
+                        } label: {
+                            Label("Add", systemImage: "plus.circle")
+                        }
+                        .disabled(vocabularyAddValidationFailure != nil)
+
+                        Spacer()
                     }
                 }
-                .labelsHidden()
-                .frame(width: 150)
-
-                Button {
-                    addVocabularyEntry()
-                } label: {
-                    Label("Add", systemImage: "plus.circle")
-                }
-                .disabled(vocabularyAddValidationFailure != nil)
             }
 
             if shouldShowVocabularyValidation, let failure = vocabularyAddValidationFailure {
@@ -454,6 +461,37 @@ struct TranscriptionSettingsView: View {
                 }
             }
         }
+    }
+
+    private var vocabularyEditorControls: some View {
+        HStack(alignment: .center, spacing: 10) {
+            TextField("Term", text: $newVocabularyTerm)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 120)
+
+            TextField("Aliases, comma separated", text: $newVocabularyAliases)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 180)
+
+            vocabularyAggressivenessPicker
+                .frame(width: 150)
+
+            Button {
+                addVocabularyEntry()
+            } label: {
+                Label("Add", systemImage: "plus.circle")
+            }
+            .disabled(vocabularyAddValidationFailure != nil)
+        }
+    }
+
+    private var vocabularyAggressivenessPicker: some View {
+        Picker("", selection: $newVocabularyAggressiveness) {
+            ForEach(PrimeVocabularyAggressiveness.allCases) { aggressiveness in
+                Text(aggressiveness.title).tag(aggressiveness)
+            }
+        }
+        .labelsHidden()
     }
 
     private var vocabularyAddValidationFailure: PrimeVocabularyValidationFailure? {
