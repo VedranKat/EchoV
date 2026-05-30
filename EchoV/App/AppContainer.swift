@@ -205,6 +205,9 @@ final class AppContainer {
             shouldDeleteTemporaryAudio: { settings.shouldDeleteTemporaryAudio },
             isPostProcessingEnabled: { settings.isPostProcessingEnabled },
             postProcessingLevel: { settings.postProcessingLevel },
+            cleanupContextProvider: {
+                Self.makeCleanupContext(settings: settings)
+            },
             onStateChanged: { appState.notifyStatusChanged() }
         )
 
@@ -619,6 +622,75 @@ final class AppContainer {
     func setPostProcessingEnabled(_ isEnabled: Bool) {
         settings.isPostProcessingEnabled = isEnabled
         configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func setPrimeAppAwareFormattingEnabled(_ isEnabled: Bool) {
+        settings.isPrimeAppAwareFormattingEnabled = isEnabled
+    }
+
+    func setPrimeCustomVocabularyEnabled(_ isEnabled: Bool) {
+        settings.isPrimeCustomVocabularyEnabled = isEnabled
+    }
+
+    func addPrimeVocabularyEntry(
+        term: String,
+        aliases: [String],
+        aggressiveness: PrimeVocabularyAggressiveness
+    ) -> Bool {
+        guard PrimeVocabularyEntry.validationFailure(
+            term: term,
+            aliasCandidates: aliases,
+            existingEntries: settings.primeVocabularyEntries
+        ) == nil else {
+            return false
+        }
+        let entry = PrimeVocabularyEntry(
+            term: term,
+            aliases: aliases,
+            aggressiveness: aggressiveness
+        )
+        guard entry.isValid else {
+            return false
+        }
+
+        var entries = settings.primeVocabularyEntries
+        entries.append(entry)
+        let normalizedEntries = PrimeVocabularyEntry.normalizedEntries(entries)
+        guard normalizedEntries.contains(where: { $0.id == entry.id }) else {
+            return false
+        }
+
+        settings.primeVocabularyEntries = normalizedEntries
+        return true
+    }
+
+    func removePrimeVocabularyEntry(id: UUID) {
+        settings.primeVocabularyEntries = settings.primeVocabularyEntries.filter { $0.id != id }
+    }
+
+    func setPrimeVocabularyEntryEnabled(id: UUID, isEnabled: Bool) {
+        updatePrimeVocabularyEntry(id: id) { entry in
+            entry.isEnabled = isEnabled
+        }
+    }
+
+    func setPrimeVocabularyEntryAggressiveness(id: UUID, aggressiveness: PrimeVocabularyAggressiveness) {
+        updatePrimeVocabularyEntry(id: id) { entry in
+            entry.aggressiveness = aggressiveness
+        }
+    }
+
+    private func updatePrimeVocabularyEntry(
+        id: UUID,
+        transform: (inout PrimeVocabularyEntry) -> Void
+    ) {
+        var entries = settings.primeVocabularyEntries
+        guard let index = entries.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        transform(&entries[index])
+        settings.primeVocabularyEntries = PrimeVocabularyEntry.normalizedEntries(entries)
     }
 
     func setVoiceModeEnabled(_ isEnabled: Bool) {
@@ -1073,6 +1145,30 @@ final class AppContainer {
                 appState.notifyStatusChanged()
             }
         }
+    }
+
+    private static func makeCleanupContext(settings: AppSettings) -> CleanupContext {
+        let targetApplication: TargetAppContext?
+        let appFormattingProfile: AppFormattingProfile?
+
+        if settings.isPrimeAppAwareFormattingEnabled {
+            let appContext = ActiveApplicationService().frontmostApplication()
+            targetApplication = appContext
+            appFormattingProfile = AppFormattingProfile.profile(for: appContext)
+        } else {
+            targetApplication = nil
+            appFormattingProfile = nil
+        }
+
+        let vocabularyEntries = settings.isPrimeCustomVocabularyEnabled
+            ? settings.primeVocabularyEntries
+            : []
+
+        return CleanupContext(
+            targetApplication: targetApplication,
+            appFormattingProfile: appFormattingProfile,
+            vocabularyEntries: vocabularyEntries
+        )
     }
 
     private func configurePostProcessingEngineFromSelectedModel() {

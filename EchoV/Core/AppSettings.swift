@@ -88,6 +88,24 @@ final class AppSettings {
         }
     }
 
+    var isPrimeAppAwareFormattingEnabled: Bool {
+        didSet {
+            userDefaults.set(isPrimeAppAwareFormattingEnabled, forKey: Keys.isPrimeAppAwareFormattingEnabled)
+        }
+    }
+
+    var isPrimeCustomVocabularyEnabled: Bool {
+        didSet {
+            userDefaults.set(isPrimeCustomVocabularyEnabled, forKey: Keys.isPrimeCustomVocabularyEnabled)
+        }
+    }
+
+    var primeVocabularyEntries: [PrimeVocabularyEntry] {
+        didSet {
+            savePrimeVocabularyEntries()
+        }
+    }
+
     var clipboardInsertionMode: ClipboardInsertionMode {
         didSet {
             userDefaults.set(clipboardInsertionMode.rawValue, forKey: Keys.clipboardInsertionMode)
@@ -342,6 +360,9 @@ final class AppSettings {
         self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
         self.isPostProcessingEnabled = userDefaults.object(forKey: Keys.isPostProcessingEnabled) as? Bool ?? false
         self.postProcessingLevel = Self.loadPostProcessingLevel(from: userDefaults)
+        self.isPrimeAppAwareFormattingEnabled = userDefaults.object(forKey: Keys.isPrimeAppAwareFormattingEnabled) as? Bool ?? true
+        self.isPrimeCustomVocabularyEnabled = userDefaults.object(forKey: Keys.isPrimeCustomVocabularyEnabled) as? Bool ?? true
+        self.primeVocabularyEntries = Self.loadPrimeVocabularyEntries(from: userDefaults)
         self.clipboardInsertionMode = Self.loadClipboardInsertionMode(from: userDefaults)
         self.voiceGateSilenceTimeout = Self.loadVoiceGateSilenceTimeout(from: userDefaults)
         self.voiceGateSensitivity = Self.loadVoiceGateSensitivity(from: userDefaults)
@@ -437,6 +458,13 @@ final class AppSettings {
         }
     }
 
+    private func savePrimeVocabularyEntries() {
+        let normalizedEntries = PrimeVocabularyEntry.normalizedEntries(primeVocabularyEntries)
+        if let data = try? JSONEncoder().encode(normalizedEntries) {
+            userDefaults.set(data, forKey: Keys.primeVocabularyEntries)
+        }
+    }
+
     private static func loadHotkey(
         forKey key: String,
         from userDefaults: UserDefaults,
@@ -482,6 +510,17 @@ final class AppSettings {
         }
 
         return level
+    }
+
+    private static func loadPrimeVocabularyEntries(from userDefaults: UserDefaults) -> [PrimeVocabularyEntry] {
+        guard
+            let data = userDefaults.data(forKey: Keys.primeVocabularyEntries),
+            let entries = try? JSONDecoder().decode([PrimeVocabularyEntry].self, from: data)
+        else {
+            return []
+        }
+
+        return PrimeVocabularyEntry.normalizedEntries(entries)
     }
 
     private static func loadVoiceGateSilenceTimeout(from userDefaults: UserDefaults) -> VoiceGateSilenceTimeout {
@@ -599,6 +638,9 @@ private enum Keys {
     static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
     static let isPostProcessingEnabled = "settings.isPostProcessingEnabled"
     static let postProcessingLevel = "settings.postProcessingLevel"
+    static let isPrimeAppAwareFormattingEnabled = "settings.isPrimeAppAwareFormattingEnabled"
+    static let isPrimeCustomVocabularyEnabled = "settings.isPrimeCustomVocabularyEnabled"
+    static let primeVocabularyEntries = "settings.primeVocabularyEntries"
     static let clipboardInsertionMode = "settings.clipboardInsertionMode"
     static let voiceGateSilenceTimeout = "settings.voiceGateSilenceTimeout"
     static let voiceGateSensitivity = "settings.voiceGateSensitivity"

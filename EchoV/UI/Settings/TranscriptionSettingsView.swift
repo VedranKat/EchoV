@@ -2,6 +2,9 @@ import SwiftUI
 
 struct TranscriptionSettingsView: View {
     @Environment(AppContainer.self) private var container
+    @State private var newVocabularyTerm = ""
+    @State private var newVocabularyAliases = ""
+    @State private var newVocabularyAggressiveness = PrimeVocabularyAggressiveness.conservative
 
     var body: some View {
         ScrollView {
@@ -292,6 +295,48 @@ struct TranscriptionSettingsView: View {
                         }
                     }
                 }
+
+                SettingsCard("Prime Context", subtitle: "App-aware formatting and custom vocabulary are applied only when Prime cleans text.") {
+                    VStack(spacing: 12) {
+                        SettingsRow(
+                            icon: "app.badge",
+                            title: "App-aware formatting",
+                            subtitle: "Prime uses the frontmost app to choose a conservative formatting style for chat, email, code, terminal, notes, or general text."
+                        ) {
+                            Toggle(
+                                "",
+                                isOn: Binding(
+                                    get: { container.settings.isPrimeAppAwareFormattingEnabled },
+                                    set: { container.setPrimeAppAwareFormattingEnabled($0) }
+                                )
+                            )
+                            .labelsHidden()
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "text.book.closed",
+                            title: "Custom vocabulary",
+                            subtitle: vocabularySubtitle
+                        ) {
+                            Toggle(
+                                "",
+                                isOn: Binding(
+                                    get: { container.settings.isPrimeCustomVocabularyEnabled },
+                                    set: { container.setPrimeCustomVocabularyEnabled($0) }
+                                )
+                            )
+                            .labelsHidden()
+                        }
+
+                        if container.settings.isPrimeCustomVocabularyEnabled {
+                            DividerLine()
+
+                            vocabularyEditor
+                        }
+                    }
+                }
             }
             .padding(24)
         }
@@ -358,6 +403,71 @@ struct TranscriptionSettingsView: View {
         }
 
         return Gemma4PostProcessingModelLayout.displayName
+    }
+
+    private var vocabularySubtitle: String {
+        "\(container.settings.primeVocabularyEntries.count) of \(PrimeVocabularyEntry.maximumEntries) terms configured. Terms and aliases are capped at \(PrimeVocabularyEntry.maximumTermLength) characters."
+    }
+
+    private var vocabularyEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                TextField("Term", text: $newVocabularyTerm)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 150)
+
+                TextField("Aliases, comma separated", text: $newVocabularyAliases)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 220)
+
+                Picker("", selection: $newVocabularyAggressiveness) {
+                    ForEach(PrimeVocabularyAggressiveness.allCases) { aggressiveness in
+                        Text(aggressiveness.title).tag(aggressiveness)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+
+                Button {
+                    addVocabularyEntry()
+                } label: {
+                    Label("Add", systemImage: "plus.circle")
+                }
+                .disabled(vocabularyAddValidationFailure != nil)
+            }
+
+            if shouldShowVocabularyValidation, let failure = vocabularyAddValidationFailure {
+                Text(failure.message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            if container.settings.primeVocabularyEntries.isEmpty {
+                Text("No custom vocabulary terms yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(container.settings.primeVocabularyEntries) { entry in
+                        PrimeVocabularyEntryRow(entry: entry)
+                    }
+                }
+            }
+        }
+    }
+
+    private var vocabularyAddValidationFailure: PrimeVocabularyValidationFailure? {
+        PrimeVocabularyEntry.validationFailure(
+            term: newVocabularyTerm,
+            aliasCandidates: PrimeVocabularyEntry.aliasCandidates(fromCommaSeparatedText: newVocabularyAliases),
+            existingEntries: container.settings.primeVocabularyEntries
+        )
+    }
+
+    private var shouldShowVocabularyValidation: Bool {
+        container.settings.primeVocabularyEntries.count >= PrimeVocabularyEntry.maximumEntries
+            || !newVocabularyTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !newVocabularyAliases.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var llamaRuntimeTitle: String {
@@ -504,6 +614,30 @@ struct TranscriptionSettingsView: View {
         }
     }
 
+    private func addVocabularyEntry() {
+        let aliasCandidates = PrimeVocabularyEntry.aliasCandidates(fromCommaSeparatedText: newVocabularyAliases)
+        guard PrimeVocabularyEntry.validationFailure(
+            term: newVocabularyTerm,
+            aliasCandidates: aliasCandidates,
+            existingEntries: container.settings.primeVocabularyEntries
+        ) == nil else {
+            return
+        }
+
+        let aliases = PrimeVocabularyEntry.normalizedAliases(aliasCandidates)
+        guard container.addPrimeVocabularyEntry(
+            term: newVocabularyTerm,
+            aliases: aliases,
+            aggressiveness: newVocabularyAggressiveness
+        ) else {
+            return
+        }
+
+        newVocabularyTerm = ""
+        newVocabularyAliases = ""
+        newVocabularyAggressiveness = .conservative
+    }
+
     private func selectModelFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -541,5 +675,65 @@ struct TranscriptionSettingsView: View {
                 await container.selectLlamaRuntime(at: url)
             }
         }
+    }
+}
+
+private struct PrimeVocabularyEntryRow: View {
+    @Environment(AppContainer.self) private var container
+    let entry: PrimeVocabularyEntry
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(entry.term)
+                        .font(.body.weight(.medium))
+
+                    if entry.isRiskyShortTerm {
+                        StatusBadge(text: "Risky", tone: .warning)
+                    }
+                }
+
+                Text(aliasesText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 12)
+
+            Picker("", selection: Binding(
+                get: { entry.aggressiveness },
+                set: { container.setPrimeVocabularyEntryAggressiveness(id: entry.id, aggressiveness: $0) }
+            )) {
+                ForEach(PrimeVocabularyAggressiveness.allCases) { aggressiveness in
+                    Text(aggressiveness.title).tag(aggressiveness)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 150)
+
+            Toggle("", isOn: Binding(
+                get: { entry.isEnabled },
+                set: { container.setPrimeVocabularyEntryEnabled(id: entry.id, isEnabled: $0) }
+            ))
+            .labelsHidden()
+
+            Button(role: .destructive) {
+                container.removePrimeVocabularyEntry(id: entry.id)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 5)
+    }
+
+    private var aliasesText: String {
+        if entry.aliases.isEmpty {
+            return "No aliases. Prime will use this as a contextual spelling hint."
+        }
+
+        return "Aliases: \(entry.aliases.joined(separator: ", "))"
     }
 }

@@ -15,9 +15,19 @@ struct GemmaPrimeTextCleanupEngine: TextCleanupEngine {
     }
 
     func clean(_ transcript: Transcript, level: PostProcessingLevel) async throws -> CleanedText {
-        let prompt = PrimeCleanupPrompt(transcript: transcript, level: level)
+        try await clean(transcript, level: level, context: .empty)
+    }
+
+    func clean(_ transcript: Transcript, level: PostProcessingLevel, context: CleanupContext) async throws -> CleanedText {
+        let prompt = PrimeCleanupPrompt(transcript: transcript, level: level, context: context)
         let generatedText = try await textGenerationEngine.generate(prompt: prompt.chatPrompt)
-        return CleanedText(text: ModelOutputSanitizer.finalAnswer(from: generatedText))
+        let cleanedText = ModelOutputSanitizer.finalAnswer(from: generatedText)
+        return CleanedText(
+            text: PrimeVocabularyAliasReplacer.replacingSafeExactAliases(
+                in: cleanedText,
+                entries: context.vocabularyEntries
+            )
+        )
     }
 
     func shutdown() async {

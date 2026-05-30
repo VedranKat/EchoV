@@ -16,6 +16,7 @@ final class DictationPipeline {
     private let shouldDeleteTemporaryAudio: @MainActor () -> Bool
     private let isPostProcessingEnabled: @MainActor () -> Bool
     private let postProcessingLevel: @MainActor () -> PostProcessingLevel
+    private let cleanupContextProvider: @MainActor () -> CleanupContext
     private let onStateChanged: @MainActor () -> Void
 
     private var currentRecording: RecordedAudio?
@@ -34,6 +35,7 @@ final class DictationPipeline {
         shouldDeleteTemporaryAudio: @escaping @MainActor () -> Bool,
         isPostProcessingEnabled: @escaping @MainActor () -> Bool,
         postProcessingLevel: @escaping @MainActor () -> PostProcessingLevel,
+        cleanupContextProvider: @escaping @MainActor () -> CleanupContext = { .empty },
         onStateChanged: @escaping @MainActor () -> Void = {}
     ) {
         self.appState = appState
@@ -48,6 +50,7 @@ final class DictationPipeline {
         self.shouldDeleteTemporaryAudio = shouldDeleteTemporaryAudio
         self.isPostProcessingEnabled = isPostProcessingEnabled
         self.postProcessingLevel = postProcessingLevel
+        self.cleanupContextProvider = cleanupContextProvider
         self.onStateChanged = onStateChanged
     }
 
@@ -157,7 +160,11 @@ final class DictationPipeline {
             let cleanedText: CleanedText
             if isPostProcessingEnabled() {
                 setState(.cleaning)
-                cleanedText = try await cleanupEngine.clean(transcript, level: postProcessingLevel())
+                cleanedText = try await cleanupEngine.clean(
+                    transcript,
+                    level: postProcessingLevel(),
+                    context: cleanupContextProvider()
+                )
             } else {
                 cleanedText = CleanedText(text: transcript.text)
             }
@@ -223,7 +230,11 @@ final class DictationPipeline {
             let transcript = Transcript(text: selectedText)
             let cleanupEngine = overrideCleanupEngine ?? self.cleanupEngine
             setState(.cleaning)
-            let cleanedText = try await cleanupEngine.clean(transcript, level: postProcessingLevel())
+            let cleanedText = try await cleanupEngine.clean(
+                transcript,
+                level: postProcessingLevel(),
+                context: cleanupContextProvider()
+            )
             setState(.inserting)
             _ = try await insertion.insert(cleanedText.text)
             let finalTranscript = Transcript(text: cleanedText.text)
