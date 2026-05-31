@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var textResponseWindowController: TextResponseWindowController?
     private var voiceModePromptPreviewWindowController: VoiceModePromptPreviewWindowController?
     private var voiceModeHUDWindowController: VoiceModeHUDWindowController?
+    private var liveSubtitleWindowController: LiveSubtitleWindowController?
     private var textResponseNotificationService: TextResponseNotificationService?
     private var isTerminating = false
 
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         voiceModePromptPreviewWindowController = VoiceModePromptPreviewWindowController(container: container)
         voiceModeHUDWindowController = VoiceModeHUDWindowController(container: container)
+        liveSubtitleWindowController = LiveSubtitleWindowController(container: container)
         container.start()
     }
 

@@ -13,6 +13,7 @@ final class AppContainer {
         static let voiceModeActivation = UInt32(6)
         static let voiceModeTextActivation = UInt32(7)
         static let stop = UInt32(8)
+        static let liveSubtitles = UInt32(9)
     }
 
     private enum RecordingTrigger {
@@ -20,6 +21,7 @@ final class AppContainer {
         case pushToTalk
         case voiceGate
         case voiceMode
+        case liveSubtitles
     }
 
     private enum VoiceGuardWorkflow {
@@ -103,10 +105,12 @@ final class AppContainer {
     let licensesStore: LicensesStore
     let speakerProfileStore: SpeakerProfileStore
     let textResponseSessions: TextResponseSessionStore
+    let liveSubtitles: LiveSubtitleStore
 
     private let hotkeyService: any HotkeyService
     private let voiceGateCapture: VoiceActivatedAudioCapture
     private let voiceModeController: VoiceModeController
+    private let liveSubtitleController: LiveSubtitleController
     private let speakerVerificationService: any SpeakerVerificationService
     private let voiceGateVerificationWindows: AudioWindowExtractor
     private let voiceProfileEnrollmentRecorder: any AudioRecorder
@@ -136,9 +140,11 @@ final class AppContainer {
         licensesStore: LicensesStore,
         speakerProfileStore: SpeakerProfileStore,
         textResponseSessions: TextResponseSessionStore,
+        liveSubtitles: LiveSubtitleStore,
         hotkeyService: any HotkeyService,
         voiceGateCapture: VoiceActivatedAudioCapture,
         voiceModeController: VoiceModeController,
+        liveSubtitleController: LiveSubtitleController,
         speakerVerificationService: any SpeakerVerificationService,
         voiceGateVerificationWindows: AudioWindowExtractor,
         voiceProfileEnrollmentRecorder: any AudioRecorder,
@@ -159,9 +165,11 @@ final class AppContainer {
         self.licensesStore = licensesStore
         self.speakerProfileStore = speakerProfileStore
         self.textResponseSessions = textResponseSessions
+        self.liveSubtitles = liveSubtitles
         self.hotkeyService = hotkeyService
         self.voiceGateCapture = voiceGateCapture
         self.voiceModeController = voiceModeController
+        self.liveSubtitleController = liveSubtitleController
         self.speakerVerificationService = speakerVerificationService
         self.voiceGateVerificationWindows = voiceGateVerificationWindows
         self.voiceProfileEnrollmentRecorder = voiceProfileEnrollmentRecorder
@@ -183,6 +191,7 @@ final class AppContainer {
         let licensesStore = LicensesStore()
         let textResponseSessions = TextResponseSessionStore()
         let textResponseSessionNotifier = TextResponseSessionNotifier()
+        let liveSubtitles = LiveSubtitleStore()
 
         let pipeline = DictationPipeline(
             appState: appState,
@@ -212,6 +221,18 @@ final class AppContainer {
         )
 
         let localTextGenerationEngine = UnconfiguredLocalTextGenerationEngine()
+        let liveSubtitleController = LiveSubtitleController(
+            store: liveSubtitles,
+            capture: LiveSubtitleAudioCapture(microphonePermission: microphonePermission),
+            asrEngine: UnconfiguredASREngine(),
+            textGenerationEngine: localTextGenerationEngine,
+            selectedAudioDeviceID: { settings.selectedLiveSubtitleAudioDeviceID },
+            chunkConfiguration: { settings.liveSubtitleChunkConfiguration },
+            mode: { settings.liveSubtitleMode },
+            targetLanguage: { settings.liveSubtitleTargetLanguage },
+            showsRawWhileProcessing: { settings.liveSubtitleShowsRawWhileProcessing },
+            holdSeconds: { settings.liveSubtitleHoldSeconds }
+        )
         let voiceModeController = VoiceModeController(
             appState: appState,
             capture: VoiceActivatedAudioCapture(
@@ -260,12 +281,14 @@ final class AppContainer {
             licensesStore: licensesStore,
             speakerProfileStore: SpeakerProfileStore(),
             textResponseSessions: textResponseSessions,
+            liveSubtitles: liveSubtitles,
             hotkeyService: CarbonHotkeyService(),
             voiceGateCapture: VoiceActivatedAudioCapture(
                 microphonePermission: microphonePermission,
                 selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
             ),
             voiceModeController: voiceModeController,
+            liveSubtitleController: liveSubtitleController,
             speakerVerificationService: ONNXSpeakerVerificationService(),
             voiceGateVerificationWindows: AudioWindowExtractor(),
             voiceProfileEnrollmentRecorder: AVFoundationAudioRecorder(
@@ -279,6 +302,13 @@ final class AppContainer {
         )
         voiceModeController.setOnStopped { [weak container] in
             container?.recordingTrigger = nil
+        }
+        liveSubtitleController.setOnStopped { [weak container] in
+            guard let container, container.recordingTrigger == .liveSubtitles else {
+                return
+            }
+            container.recordingTrigger = nil
+            container.settings.isLiveSubtitlesEnabled = false
         }
         voiceModeController.setOnContinueTextResponse { [weak container] userText in
             await container?.continueLatestTextResponseSession(userText: userText) ?? false
@@ -323,6 +353,9 @@ final class AppContainer {
             }
             configureASREngineFromSelectedModel()
             configurePostProcessingEngineFromSelectedModel()
+            if settings.isLiveSubtitlesEnabled {
+                await startLiveSubtitlesIfPossible()
+            }
             if settings.isVoiceModeEnabled {
                 await startVoiceModeIfPossible()
             }
@@ -336,6 +369,7 @@ final class AppContainer {
         hotkeyService.unregister()
         voiceGateCapture.stop()
         voiceModeController.stop()
+        liveSubtitleController.stop(notify: false)
         if isVoiceProfileEnrollmentRecording {
             _ = try? await voiceProfileEnrollmentRecorder.stop()
             isVoiceProfileEnrollmentRecording = false
@@ -442,6 +476,16 @@ final class AppContainer {
         }
 
         settings.voiceModeTextActivationHotkey = binding
+        registerHotkeys()
+    }
+
+    func setLiveSubtitleHotkey(_ binding: HotkeyBinding?) {
+        guard isHotkeyAvailable(binding, excluding: \.liveSubtitleHotkey) else {
+            appState.lastError = .hotkeyUnavailable(details: "Live Subtitles cannot use the same hotkey as another EchoV shortcut.")
+            return
+        }
+
+        settings.liveSubtitleHotkey = binding
         registerHotkeys()
     }
 
@@ -741,6 +785,64 @@ final class AppContainer {
     func setVoiceModeHUDEnabled(_ isEnabled: Bool) {
         settings.isVoiceModeHUDEnabled = isEnabled
         appState.notifyStatusChanged()
+    }
+
+    func setLiveSubtitlesEnabled(_ isEnabled: Bool) {
+        settings.isLiveSubtitlesEnabled = isEnabled
+        configurePostProcessingEngineFromSelectedModel()
+
+        if isEnabled {
+            Task {
+                await self.startLiveSubtitlesIfPossible()
+            }
+        } else {
+            liveSubtitleController.stop()
+            if recordingTrigger == .liveSubtitles {
+                recordingTrigger = nil
+            }
+            if settings.isVoiceModeEnabled {
+                Task {
+                    await self.startVoiceModeIfPossible()
+                }
+            }
+        }
+    }
+
+    func setLiveSubtitleMode(_ mode: LiveSubtitleMode) {
+        settings.liveSubtitleMode = mode
+        configurePostProcessingEngineFromSelectedModel()
+    }
+
+    func setLiveSubtitleAudioDeviceID(_ deviceID: String?) {
+        settings.selectedLiveSubtitleAudioDeviceID = deviceID
+        if liveSubtitles.isRunning {
+            recordingTrigger = nil
+            liveSubtitleController.stop()
+            settings.isLiveSubtitlesEnabled = true
+            Task {
+                await self.startLiveSubtitlesIfPossible()
+            }
+        }
+    }
+
+    func availableLiveSubtitleAudioDevices() -> [MicrophoneDevice] {
+        MicrophoneDeviceCatalog.inputDevices()
+    }
+
+    func liveSubtitlePostProcessingIndicator() -> (title: String, subtitle: String, tone: StatusBadge.Tone) {
+        guard settings.liveSubtitleMode.requiresPostProcessing else {
+            return ("Raw", "Prime is not used in Raw mode.", .neutral)
+        }
+
+        guard modelStore.selectedLlamaRuntime?.validation.isValid == true else {
+            return ("Needs runtime", "Install the llama.cpp runtime before cleaning or translating subtitles.", .warning)
+        }
+
+        guard modelStore.selectedPostProcessingModel?.validation.isValid == true else {
+            return ("Needs model", "Download or select the Prime text model before cleaning or translating subtitles.", .warning)
+        }
+
+        return ("Ready", modelStore.selectedPostProcessingModel?.displayName ?? "Selected Prime model", .success)
     }
 
     func setTextResponseSessionCreatedHandler(_ handler: @escaping (UUID, String, String) -> Void) {
@@ -1169,15 +1271,16 @@ final class AppContainer {
             selection.validation.isValid
         else {
             pipeline.setASREngine(UnconfiguredASREngine())
+            liveSubtitleController.setASREngine(UnconfiguredASREngine())
             return
         }
 
-        pipeline.setASREngine(
-            FluidAudioParakeetEngine(
-                modelURL: selection.url,
-                computeMode: .all
-            )
+        let engine = FluidAudioParakeetEngine(
+            modelURL: selection.url,
+            computeMode: .all
         )
+        pipeline.setASREngine(engine)
+        liveSubtitleController.setASREngine(engine)
         preloadASRModel()
     }
 
@@ -1239,6 +1342,7 @@ final class AppContainer {
         let shouldKeepLocalTextModelReady =
             settings.isPostProcessingEnabled
             || (settings.isVoiceModeEnabled && settings.voiceModeResponseBackend == .localLlama)
+            || (settings.isLiveSubtitlesEnabled && settings.liveSubtitleMode.requiresPostProcessing)
         let hasValidLocalTextModel =
             modelStore.selectedLlamaRuntime?.validation.isValid == true
             && modelStore.selectedPostProcessingModel?.validation.isValid == true
@@ -1278,6 +1382,10 @@ final class AppContainer {
                 textGenerationEngine: cleanupTextGenerationEngine
             )
         )
+        let subtitleTextGenerationEngine: any LocalTextGenerationEngine = settings.liveSubtitleMode.requiresPostProcessing
+            ? configuredEngine
+            : UnconfiguredLocalTextGenerationEngine()
+        liveSubtitleController.setTextGenerationEngine(subtitleTextGenerationEngine)
 
         if shouldKeepLocalTextModelReady, hasValidLocalTextModel {
             preloadLocalTextGenerationModel(configuredEngine)
@@ -1379,6 +1487,7 @@ final class AppContainer {
             ("Hands-free", settings.voiceGateHotkey),
             ("Assistant", settings.voiceModeActivationHotkey),
             ("Assistant text", settings.voiceModeTextActivationHotkey),
+            ("Live Subtitles", settings.liveSubtitleHotkey),
             ("Stop EchoV", settings.stopHotkey)
         ]
 
@@ -1538,6 +1647,21 @@ final class AppContainer {
             )
         }
 
+        if let liveSubtitleHotkey = settings.liveSubtitleHotkey {
+            registrations.append(
+                HotkeyRegistration(
+                    id: HotkeyID.liveSubtitles,
+                    binding: liveSubtitleHotkey,
+                    onPressed: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.handleLiveSubtitleHotkey()
+                        }
+                    },
+                    onReleased: nil
+                )
+            )
+        }
+
         if let stopHotkey = settings.stopHotkey {
             registrations.append(
                 HotkeyRegistration(
@@ -1572,6 +1696,7 @@ final class AppContainer {
             \.voiceGateVerifierToggleHotkey,
             \.voiceModeActivationHotkey,
             \.voiceModeTextActivationHotkey,
+            \.liveSubtitleHotkey,
             \.stopHotkey
         ]
 
@@ -1607,6 +1732,8 @@ final class AppContainer {
         case .pushToTalk:
             return
         case .voiceGate:
+            return
+        case .liveSubtitles:
             return
         }
     }
@@ -1712,6 +1839,24 @@ final class AppContainer {
         await voiceModeController.activateManually(command: command)
     }
 
+    private func handleLiveSubtitleHotkey() async {
+        if liveSubtitles.isRunning {
+            settings.isLiveSubtitlesEnabled = false
+            liveSubtitleController.stop()
+            if recordingTrigger == .liveSubtitles {
+                recordingTrigger = nil
+            }
+            if settings.isVoiceModeEnabled {
+                await startVoiceModeIfPossible()
+            }
+            return
+        }
+
+        settings.isLiveSubtitlesEnabled = true
+        configurePostProcessingEngineFromSelectedModel()
+        await startLiveSubtitlesIfPossible()
+    }
+
     func stopActiveWork() async {
         for task in textResponseGenerationTasks.values {
             task.cancel()
@@ -1721,6 +1866,8 @@ final class AppContainer {
         voiceGateCapture.stop()
         cancelVoiceModePromptPreview()
         voiceModeController.stop()
+        liveSubtitleController.stop()
+        settings.isLiveSubtitlesEnabled = false
         isVoiceGateArmed = false
 
         if isVoiceProfileEnrollmentRecording {
@@ -1738,6 +1885,29 @@ final class AppContainer {
 
         if settings.isVoiceModeEnabled {
             await startVoiceModeIfPossible()
+        }
+    }
+
+    private func startLiveSubtitlesIfPossible() async {
+        guard settings.isLiveSubtitlesEnabled else {
+            return
+        }
+
+        guard makeVoiceModeYieldToManualRecordingIfNeeded(),
+              recordingTrigger == nil,
+              appState.state.canStartRecording
+        else {
+            liveSubtitles.updateStatus("Stop the current EchoV task before starting subtitles.")
+            settings.isLiveSubtitlesEnabled = false
+            return
+        }
+
+        recordingTrigger = .liveSubtitles
+        await liveSubtitleController.start()
+
+        if !liveSubtitles.isRunning {
+            recordingTrigger = nil
+            settings.isLiveSubtitlesEnabled = false
         }
     }
 

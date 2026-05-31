@@ -1,6 +1,6 @@
 import Foundation
 
-enum VoiceGateSensitivity: String, CaseIterable, Identifiable {
+enum VoiceGateSensitivity: String, CaseIterable, Identifiable, Sendable {
     case low
     case medium
     case high

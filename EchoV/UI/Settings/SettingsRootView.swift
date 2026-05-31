@@ -65,6 +65,8 @@ struct SettingsRootView: View {
             VoiceGuardSettingsView()
         case .voiceMode:
             VoiceModeSettingsView()
+        case .liveSubtitles:
+            LiveSubtitleSettingsView()
         case .model:
             TranscriptionSettingsView()
         case .history:
@@ -122,6 +124,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case dictation
     case voiceGuard
     case voiceMode
+    case liveSubtitles
     case model
     case history
     case proxy
@@ -142,6 +145,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "Trusted Voice"
         case .voiceMode:
             "Assistant"
+        case .liveSubtitles:
+            "Live Subtitles"
         case .model:
             "Model"
         case .history:
@@ -167,6 +172,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             "person.wave.2"
         case .voiceMode:
             "speaker.wave.2.bubble"
+        case .liveSubtitles:
+            "captions.bubble"
         case .model:
             "waveform.badge.magnifyingglass"
         case .history:

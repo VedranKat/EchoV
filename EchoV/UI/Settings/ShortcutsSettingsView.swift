@@ -73,6 +73,11 @@ struct ShortcutsSettingsView: View {
                 commands: [.voiceModeVoice, .voiceModeText]
             ),
             ShortcutCommandGroup(
+                title: "Live Subtitles",
+                subtitle: "Toggle the bottom subtitle overlay for selected audio.",
+                commands: [.liveSubtitles]
+            ),
+            ShortcutCommandGroup(
                 title: "Prime",
                 subtitle: "Toggle local transcript cleanup.",
                 commands: [.prime]
@@ -195,6 +200,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
     case voiceGate
     case voiceModeVoice
     case voiceModeText
+    case liveSubtitles
     case prime
     case voiceGuard
 
@@ -216,6 +222,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
             "speaker.wave.2.bubble"
         case .voiceModeText:
             "text.bubble"
+        case .liveSubtitles:
+            "captions.bubble"
         case .prime:
             "wand.and.sparkles"
         case .voiceGuard:
@@ -237,6 +245,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
             "Assistant Voice"
         case .voiceModeText:
             "Assistant Text"
+        case .liveSubtitles:
+            "Live Subtitles"
         case .prime:
             "Prime"
         case .voiceGuard:
@@ -266,6 +276,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
             "Manual text activation"
         case (.voiceModeText, .shortcuts):
             "Assistant Text"
+        case (.liveSubtitles, .settings):
+            "Live subtitles hotkey"
+        case (.liveSubtitles, .shortcuts):
+            "Live Subtitles"
         case (.prime, .settings):
             "Prime hotkey"
         case (.prime, .shortcuts):
@@ -291,6 +305,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
             "Start spoken-answer listening without saying Computer."
         case .voiceModeText:
             "Start text-response listening without saying Computer text."
+        case .liveSubtitles:
+            "Start or stop live subtitles from the selected audio source."
         case .prime:
             "Toggle Prime post-processing on or off."
         case .voiceGuard:
@@ -313,6 +329,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
             container.settings.voiceModeActivationHotkey
         case .voiceModeText:
             container.settings.voiceModeTextActivationHotkey
+        case .liveSubtitles:
+            container.settings.liveSubtitleHotkey
         case .prime:
             container.settings.primeToggleHotkey
         case .voiceGuard:
@@ -335,6 +353,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
             container.setVoiceModeActivationHotkey(binding)
         case .voiceModeText:
             container.setVoiceModeTextActivationHotkey(binding)
+        case .liveSubtitles:
+            container.setLiveSubtitleHotkey(binding)
         case .prime:
             container.setPrimeToggleHotkey(binding)
         case .voiceGuard:
@@ -355,6 +375,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
             return ShortcutCommandStatus(text: "Ready", tone: .success)
         case .voiceModeVoice, .voiceModeText:
             guard container.settings.isVoiceModeEnabled else {
+                return ShortcutCommandStatus(text: "Off", tone: .neutral)
+            }
+            return speechCaptureStatus(in: container, requiresAccessibility: false)
+        case .liveSubtitles:
+            guard container.settings.isLiveSubtitlesEnabled else {
                 return ShortcutCommandStatus(text: "Off", tone: .neutral)
             }
             return speechCaptureStatus(in: container, requiresAccessibility: false)

@@ -48,6 +48,12 @@ final class AppSettings {
         }
     }
 
+    var liveSubtitleHotkey: HotkeyBinding? {
+        didSet {
+            saveHotkey(liveSubtitleHotkey, forKey: Keys.liveSubtitleHotkey)
+        }
+    }
+
     var stopHotkey: HotkeyBinding? {
         didSet {
             saveHotkey(stopHotkey, forKey: Keys.stopHotkey)
@@ -74,6 +80,119 @@ final class AppSettings {
                 userDefaults.removeObject(forKey: Keys.selectedMicrophoneDeviceID)
             }
         }
+    }
+
+    var selectedLiveSubtitleAudioDeviceID: String? {
+        didSet {
+            if let selectedLiveSubtitleAudioDeviceID {
+                userDefaults.set(selectedLiveSubtitleAudioDeviceID, forKey: Keys.selectedLiveSubtitleAudioDeviceID)
+            } else {
+                userDefaults.removeObject(forKey: Keys.selectedLiveSubtitleAudioDeviceID)
+            }
+        }
+    }
+
+    var isLiveSubtitlesEnabled: Bool {
+        didSet {
+            userDefaults.set(isLiveSubtitlesEnabled, forKey: Keys.isLiveSubtitlesEnabled)
+        }
+    }
+
+    var liveSubtitleMode: LiveSubtitleMode {
+        didSet {
+            userDefaults.set(liveSubtitleMode.rawValue, forKey: Keys.liveSubtitleMode)
+        }
+    }
+
+    var liveSubtitleTargetLanguage: String {
+        didSet {
+            userDefaults.set(Self.normalizedPromptPhrase(liveSubtitleTargetLanguage), forKey: Keys.liveSubtitleTargetLanguage)
+        }
+    }
+
+    var liveSubtitleChunkPreset: LiveSubtitleChunkPreset {
+        didSet {
+            userDefaults.set(liveSubtitleChunkPreset.rawValue, forKey: Keys.liveSubtitleChunkPreset)
+        }
+    }
+
+    var liveSubtitleMaxChunkSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(liveSubtitleMaxChunkSeconds, forKey: Keys.liveSubtitleMaxChunkSeconds)
+        }
+    }
+
+    var liveSubtitleSilenceTimeoutSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(liveSubtitleSilenceTimeoutSeconds, forKey: Keys.liveSubtitleSilenceTimeoutSeconds)
+        }
+    }
+
+    var liveSubtitleMinimumSpeechSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(liveSubtitleMinimumSpeechSeconds, forKey: Keys.liveSubtitleMinimumSpeechSeconds)
+        }
+    }
+
+    var liveSubtitlePreRollSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(liveSubtitlePreRollSeconds, forKey: Keys.liveSubtitlePreRollSeconds)
+        }
+    }
+
+    var liveSubtitleOverlapSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(liveSubtitleOverlapSeconds, forKey: Keys.liveSubtitleOverlapSeconds)
+        }
+    }
+
+    var liveSubtitleSensitivity: VoiceGateSensitivity {
+        didSet {
+            userDefaults.set(liveSubtitleSensitivity.rawValue, forKey: Keys.liveSubtitleSensitivity)
+        }
+    }
+
+    var liveSubtitleShowsRawWhileProcessing: Bool {
+        didSet {
+            userDefaults.set(liveSubtitleShowsRawWhileProcessing, forKey: Keys.liveSubtitleShowsRawWhileProcessing)
+        }
+    }
+
+    var liveSubtitleTextSize: Double {
+        didSet {
+            userDefaults.set(liveSubtitleTextSize, forKey: Keys.liveSubtitleTextSize)
+        }
+    }
+
+    var liveSubtitleMaxLines: Int {
+        didSet {
+            userDefaults.set(liveSubtitleMaxLines, forKey: Keys.liveSubtitleMaxLines)
+        }
+    }
+
+    var liveSubtitleBottomMargin: Double {
+        didSet {
+            userDefaults.set(liveSubtitleBottomMargin, forKey: Keys.liveSubtitleBottomMargin)
+        }
+    }
+
+    var liveSubtitleHoldSeconds: TimeInterval {
+        didSet {
+            userDefaults.set(liveSubtitleHoldSeconds, forKey: Keys.liveSubtitleHoldSeconds)
+        }
+    }
+
+    var liveSubtitleChunkConfiguration: LiveSubtitleChunkConfiguration {
+        let defaults = liveSubtitleChunkPreset.defaults
+        let usesCustomValues = liveSubtitleChunkPreset == .custom
+        return LiveSubtitleChunkConfiguration(
+            maxChunkSeconds: usesCustomValues ? liveSubtitleMaxChunkSeconds : defaults.maxChunkSeconds,
+            silenceTimeoutSeconds: usesCustomValues ? liveSubtitleSilenceTimeoutSeconds : defaults.silenceTimeoutSeconds,
+            minimumSpeechSeconds: usesCustomValues ? liveSubtitleMinimumSpeechSeconds : defaults.minimumSpeechSeconds,
+            preRollSeconds: usesCustomValues ? liveSubtitlePreRollSeconds : defaults.preRollSeconds,
+            overlapSeconds: usesCustomValues ? liveSubtitleOverlapSeconds : defaults.overlapSeconds,
+            sensitivity: usesCustomValues ? liveSubtitleSensitivity : defaults.sensitivity
+        )
     }
 
     var isPostProcessingEnabled: Bool {
@@ -351,6 +470,10 @@ final class AppSettings {
             forKey: Keys.voiceModeTextActivationHotkey,
             from: userDefaults
         ) ?? .defaultVoiceModeTextActivation
+        self.liveSubtitleHotkey = Self.loadHotkey(
+            forKey: Keys.liveSubtitleHotkey,
+            from: userDefaults
+        ) ?? .defaultLiveSubtitles
         self.stopHotkey = Self.loadHotkey(
             forKey: Keys.stopHotkey,
             from: userDefaults
@@ -358,6 +481,69 @@ final class AppSettings {
         self.isHistoryEnabled = userDefaults.object(forKey: Keys.isHistoryEnabled) as? Bool ?? true
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
         self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
+        self.selectedLiveSubtitleAudioDeviceID = userDefaults.string(forKey: Keys.selectedLiveSubtitleAudioDeviceID)
+        self.isLiveSubtitlesEnabled = userDefaults.object(forKey: Keys.isLiveSubtitlesEnabled) as? Bool ?? false
+        self.liveSubtitleMode = Self.loadLiveSubtitleMode(from: userDefaults)
+        self.liveSubtitleTargetLanguage = Self.normalizedPromptPhrase(
+            userDefaults.string(forKey: Keys.liveSubtitleTargetLanguage) ?? "English"
+        )
+        self.liveSubtitleChunkPreset = Self.loadLiveSubtitleChunkPreset(from: userDefaults)
+        self.liveSubtitleMaxChunkSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitleMaxChunkSeconds,
+            defaultValue: LiveSubtitleChunkPreset.balanced.defaults.maxChunkSeconds,
+            range: 1.5...12.0
+        )
+        self.liveSubtitleSilenceTimeoutSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitleSilenceTimeoutSeconds,
+            defaultValue: LiveSubtitleChunkPreset.balanced.defaults.silenceTimeoutSeconds,
+            range: 0.25...2.5
+        )
+        self.liveSubtitleMinimumSpeechSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitleMinimumSpeechSeconds,
+            defaultValue: LiveSubtitleChunkPreset.balanced.defaults.minimumSpeechSeconds,
+            range: 0.15...1.5
+        )
+        self.liveSubtitlePreRollSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitlePreRollSeconds,
+            defaultValue: LiveSubtitleChunkPreset.balanced.defaults.preRollSeconds,
+            range: 0.0...1.0
+        )
+        self.liveSubtitleOverlapSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitleOverlapSeconds,
+            defaultValue: LiveSubtitleChunkPreset.balanced.defaults.overlapSeconds,
+            range: 0.0...0.75
+        )
+        self.liveSubtitleSensitivity = Self.loadLiveSubtitleSensitivity(from: userDefaults)
+        self.liveSubtitleShowsRawWhileProcessing = userDefaults.object(forKey: Keys.liveSubtitleShowsRawWhileProcessing) as? Bool ?? true
+        self.liveSubtitleTextSize = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitleTextSize,
+            defaultValue: 28,
+            range: 18...48
+        )
+        self.liveSubtitleMaxLines = Self.loadClampedInt(
+            from: userDefaults,
+            key: Keys.liveSubtitleMaxLines,
+            defaultValue: 2,
+            range: 1...3
+        )
+        self.liveSubtitleBottomMargin = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitleBottomMargin,
+            defaultValue: 56,
+            range: 20...180
+        )
+        self.liveSubtitleHoldSeconds = Self.loadClampedDouble(
+            from: userDefaults,
+            key: Keys.liveSubtitleHoldSeconds,
+            defaultValue: 2.2,
+            range: 0.8...8.0
+        )
         self.isPostProcessingEnabled = userDefaults.object(forKey: Keys.isPostProcessingEnabled) as? Bool ?? false
         self.postProcessingLevel = Self.loadPostProcessingLevel(from: userDefaults)
         self.isPrimeAppAwareFormattingEnabled = userDefaults.object(forKey: Keys.isPrimeAppAwareFormattingEnabled) as? Bool ?? true
@@ -436,6 +622,7 @@ final class AppSettings {
         voiceGateVerifierToggleHotkey = .defaultVoiceGateVerifierToggle
         voiceModeActivationHotkey = .defaultVoiceModeActivation
         voiceModeTextActivationHotkey = .defaultVoiceModeTextActivation
+        liveSubtitleHotkey = .defaultLiveSubtitles
         stopHotkey = .defaultStop
     }
 
@@ -578,6 +765,39 @@ final class AppSettings {
         return backend
     }
 
+    private static func loadLiveSubtitleMode(from userDefaults: UserDefaults) -> LiveSubtitleMode {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.liveSubtitleMode),
+            let mode = LiveSubtitleMode(rawValue: rawValue)
+        else {
+            return .rawCaptions
+        }
+
+        return mode
+    }
+
+    private static func loadLiveSubtitleChunkPreset(from userDefaults: UserDefaults) -> LiveSubtitleChunkPreset {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.liveSubtitleChunkPreset),
+            let preset = LiveSubtitleChunkPreset(rawValue: rawValue)
+        else {
+            return .balanced
+        }
+
+        return preset
+    }
+
+    private static func loadLiveSubtitleSensitivity(from userDefaults: UserDefaults) -> VoiceGateSensitivity {
+        guard
+            let rawValue = userDefaults.string(forKey: Keys.liveSubtitleSensitivity),
+            let sensitivity = VoiceGateSensitivity(rawValue: rawValue)
+        else {
+            return LiveSubtitleChunkPreset.balanced.defaults.sensitivity
+        }
+
+        return sensitivity
+    }
+
     private static func loadVoiceModePromptEndingMode(from userDefaults: UserDefaults) -> VoiceModePromptEndingMode {
         guard
             let rawValue = userDefaults.string(forKey: Keys.voiceModePromptEndingMode),
@@ -619,6 +839,19 @@ final class AppSettings {
         return min(max(userDefaults.double(forKey: key), range.lowerBound), range.upperBound)
     }
 
+    private static func loadClampedInt(
+        from userDefaults: UserDefaults,
+        key: String,
+        defaultValue: Int,
+        range: ClosedRange<Int>
+    ) -> Int {
+        guard userDefaults.object(forKey: key) != nil else {
+            return defaultValue
+        }
+
+        return min(max(userDefaults.integer(forKey: key), range.lowerBound), range.upperBound)
+    }
+
     private func applyProxyEnvironment() {
         ProxyEnvironment.apply(proxySettings)
     }
@@ -632,10 +865,27 @@ private enum Keys {
     static let voiceGateVerifierToggleHotkey = "settings.voiceGateVerifierToggleHotkey"
     static let voiceModeActivationHotkey = "settings.voiceModeActivationHotkey"
     static let voiceModeTextActivationHotkey = "settings.voiceModeTextActivationHotkey"
+    static let liveSubtitleHotkey = "settings.liveSubtitleHotkey"
     static let stopHotkey = "settings.stopHotkey"
     static let isHistoryEnabled = "settings.isHistoryEnabled"
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
     static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
+    static let selectedLiveSubtitleAudioDeviceID = "settings.selectedLiveSubtitleAudioDeviceID"
+    static let isLiveSubtitlesEnabled = "settings.isLiveSubtitlesEnabled"
+    static let liveSubtitleMode = "settings.liveSubtitleMode"
+    static let liveSubtitleTargetLanguage = "settings.liveSubtitleTargetLanguage"
+    static let liveSubtitleChunkPreset = "settings.liveSubtitleChunkPreset"
+    static let liveSubtitleMaxChunkSeconds = "settings.liveSubtitleMaxChunkSeconds"
+    static let liveSubtitleSilenceTimeoutSeconds = "settings.liveSubtitleSilenceTimeoutSeconds"
+    static let liveSubtitleMinimumSpeechSeconds = "settings.liveSubtitleMinimumSpeechSeconds"
+    static let liveSubtitlePreRollSeconds = "settings.liveSubtitlePreRollSeconds"
+    static let liveSubtitleOverlapSeconds = "settings.liveSubtitleOverlapSeconds"
+    static let liveSubtitleSensitivity = "settings.liveSubtitleSensitivity"
+    static let liveSubtitleShowsRawWhileProcessing = "settings.liveSubtitleShowsRawWhileProcessing"
+    static let liveSubtitleTextSize = "settings.liveSubtitleTextSize"
+    static let liveSubtitleMaxLines = "settings.liveSubtitleMaxLines"
+    static let liveSubtitleBottomMargin = "settings.liveSubtitleBottomMargin"
+    static let liveSubtitleHoldSeconds = "settings.liveSubtitleHoldSeconds"
     static let isPostProcessingEnabled = "settings.isPostProcessingEnabled"
     static let postProcessingLevel = "settings.postProcessingLevel"
     static let isPrimeAppAwareFormattingEnabled = "settings.isPrimeAppAwareFormattingEnabled"

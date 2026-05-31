@@ -47,6 +47,12 @@ struct HotkeyBinding: Codable, Equatable, Sendable {
         displayName: "Control + 4"
     )
 
+    static let defaultLiveSubtitles = HotkeyBinding(
+        keyCode: 22,
+        modifiers: [.control],
+        displayName: "Control + 6"
+    )
+
     static let defaultStop = HotkeyBinding(
         keyCode: 23,
         modifiers: [.control],
