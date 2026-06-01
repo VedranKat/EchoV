@@ -1,4 +1,5 @@
 import AudioToolbox
+import AVFoundation
 import CoreAudio
 import Foundation
 
@@ -9,9 +10,11 @@ struct MicrophoneDevice: Identifiable, Hashable, Sendable {
 
 enum MicrophoneDeviceCatalog {
     static func inputDevices() -> [MicrophoneDevice] {
-        allAudioDeviceIDs()
+        let captureDeviceUIDs = audioCaptureDeviceUIDs()
+
+        return allAudioDeviceIDs()
             .filter(hasInputStreams)
-            .compactMap { deviceID in
+            .compactMap { deviceID -> MicrophoneDevice? in
                 guard
                     let uid = stringProperty(
                         kAudioDevicePropertyDeviceUID,
@@ -22,15 +25,50 @@ enum MicrophoneDeviceCatalog {
                     return nil
                 }
 
+                guard captureDeviceUIDs.contains(uid) else {
+                    return nil
+                }
+
                 let name = stringProperty(
                     kAudioObjectPropertyName,
                     for: deviceID,
                     scope: kAudioObjectPropertyScopeGlobal
                 ) ?? "Microphone"
 
+                guard !isSystemDefaultAggregate(
+                    name: name,
+                    uid: uid,
+                    modelUID: stringProperty(
+                        kAudioDevicePropertyModelUID,
+                        for: deviceID,
+                        scope: kAudioObjectPropertyScopeGlobal
+                    ),
+                    manufacturer: stringProperty(
+                        kAudioObjectPropertyManufacturer,
+                        for: deviceID,
+                        scope: kAudioObjectPropertyScopeGlobal
+                    )
+                ) else {
+                    return nil
+                }
+
                 return MicrophoneDevice(id: uid, name: name)
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    static func isSystemDefaultAggregate(
+        name: String,
+        uid: String? = nil,
+        modelUID: String? = nil,
+        manufacturer: String? = nil
+    ) -> Bool {
+        let compactIdentity = [name, uid, modelUID, manufacturer]
+            .compactMap { $0 }
+            .map(compactedDeviceText)
+            .joined()
+
+        return compactIdentity.contains("defaultdeviceaggregate")
     }
 
     static func audioDeviceID(for uid: String) -> AudioDeviceID? {
@@ -100,6 +138,19 @@ enum MicrophoneDeviceCatalog {
 
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
         return buffers.contains { $0.mNumberChannels > 0 }
+    }
+
+    private static func audioCaptureDeviceUIDs() -> Set<String> {
+        let session = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.microphone, .external],
+            mediaType: .audio,
+            position: .unspecified
+        )
+        return Set(session.devices.map(\.uniqueID))
+    }
+
+    private static func compactedDeviceText(_ text: String) -> String {
+        String(text.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 
     private static func stringProperty(

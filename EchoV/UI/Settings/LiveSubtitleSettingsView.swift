@@ -38,7 +38,7 @@ struct LiveSubtitleSettingsView: View {
                             Picker(
                                 "Audio source",
                                 selection: Binding(
-                                    get: { container.settings.selectedLiveSubtitleAudioDeviceID ?? "" },
+                                    get: { selectedAudioDeviceID ?? "" },
                                     set: { container.setLiveSubtitleAudioDeviceID($0.isEmpty ? nil : $0) }
                                 )
                             ) {
@@ -259,6 +259,9 @@ struct LiveSubtitleSettingsView: View {
             .padding(24)
         }
         .settingsPageBackground()
+        .onAppear {
+            container.clearUnavailableLiveSubtitleAudioDeviceSelection()
+        }
     }
 
     private var customChunkControls: some View {
@@ -383,8 +386,18 @@ struct LiveSubtitleSettingsView: View {
         audioDevices.first { $0.name.localizedCaseInsensitiveContains("blackhole") }
     }
 
+    private var selectedAudioDeviceID: String? {
+        guard let selectedID = container.settings.selectedLiveSubtitleAudioDeviceID,
+              audioDevices.contains(where: { $0.id == selectedID })
+        else {
+            return nil
+        }
+
+        return selectedID
+    }
+
     private var audioSourceSubtitle: String {
-        if let selectedID = container.settings.selectedLiveSubtitleAudioDeviceID,
+        if let selectedID = selectedAudioDeviceID,
            let device = audioDevices.first(where: { $0.id == selectedID }) {
             return "Using \(device.name)."
         }

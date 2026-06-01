@@ -67,6 +67,7 @@ struct PrimeCleanupPrompt: Equatable, Sendable {
 
             Do not summarize, truncate, answer, or collapse the transcript into a shorter statement.
             Omit only filler, false starts, accidental repetition, and obvious ASR artifacts.
+            For prose text, fix only unambiguous grammar or usage errors that make the text read accidentally wrong.
             """
         case .balanced:
             """
@@ -74,12 +75,14 @@ struct PrimeCleanupPrompt: Equatable, Sendable {
             Do not summarize, truncate, answer, or collapse the transcript into a shorter statement.
             Do not leave filler, duplicate words, false starts, or obvious dictated scaffolding in place when cleanup is clear.
             Use light rewriting to make the result read like deliberate text, while preserving all facts, examples, caveats, names, technical terms, numbers, and formatting.
+            For prose text, fix clear grammar, tense, agreement, and usage errors even when the sentence is understandable. Examples: had wrote -> had written; would of -> would have; charts didn't matched -> charts didn't match.
             """
         case .concise:
             """
 
             Do not answer the transcript or turn it into a summary.
             Shortening must preserve required facts, examples, caveats, names, technical terms, numbers, and formatting.
+            For prose text, produce grammatical sentences while shortening. Fix clear tense, agreement, and usage errors without changing required meaning.
             """
         }
 

@@ -82,6 +82,24 @@ final class GemmaPrimeTextCleanupEngineTests: XCTestCase {
         XCTAssertEqual(prompt?.system.contains("concise, readable text"), false)
     }
 
+    func testBalancedPromptRequiresClearGrammarFixes() async throws {
+        let model = StubLocalTextGenerationEngine(output: "Cleaned")
+        let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)
+        let transcript = "I had wrote most of the notes, and Sarah would of sent the updated charts if they didn't matched the spreadsheet."
+
+        _ = try await engine.clean(Transcript(text: transcript), level: .balanced)
+
+        let prompt = await model.lastPrompt
+        XCTAssertEqual(prompt?.user.contains(transcript), true)
+        XCTAssertEqual(
+            prompt?.system.contains("fix clear grammar, tense, agreement, and usage errors"),
+            true
+        )
+        XCTAssertEqual(prompt?.system.contains("had wrote -> had written"), true)
+        XCTAssertEqual(prompt?.system.contains("would of -> would have"), true)
+        XCTAssertEqual(prompt?.system.contains("charts didn't matched -> charts didn't match"), true)
+    }
+
     func testConcisePromptPreservesRequiredDetails() async throws {
         let model = StubLocalTextGenerationEngine(output: "Short output")
         let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)

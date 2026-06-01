@@ -603,11 +603,12 @@ final class AppContainer {
         appState.notifyStatusChanged()
     }
 
-    func refreshPermissions() {
+    func refreshPermissions(notifyOnChange: Bool = true) {
         permissionState.refresh(
             microphonePermission: microphonePermission,
             accessibilityPermission: accessibilityPermission,
-            startupPermission: startupPermission
+            startupPermission: startupPermission,
+            notifyOnChange: notifyOnChange
         )
     }
 
@@ -835,7 +836,7 @@ final class AppContainer {
     }
 
     func setLiveSubtitleAudioDeviceID(_ deviceID: String?) {
-        settings.selectedLiveSubtitleAudioDeviceID = deviceID
+        settings.selectedLiveSubtitleAudioDeviceID = validatedAudioDeviceID(deviceID)
         if liveSubtitles.isRunning {
             recordingTrigger = nil
             liveSubtitleController.stop()
@@ -848,6 +849,10 @@ final class AppContainer {
 
     func availableLiveSubtitleAudioDevices() -> [MicrophoneDevice] {
         MicrophoneDeviceCatalog.inputDevices()
+    }
+
+    func clearUnavailableLiveSubtitleAudioDeviceSelection() {
+        settings.selectedLiveSubtitleAudioDeviceID = validatedAudioDeviceID(settings.selectedLiveSubtitleAudioDeviceID)
     }
 
     func liveSubtitlePostProcessingIndicator() -> (title: String, subtitle: String, tone: StatusBadge.Tone) {
@@ -1938,6 +1943,8 @@ final class AppContainer {
             return
         }
 
+        clearUnavailableLiveSubtitleAudioDeviceSelection()
+
         guard makeVoiceModeYieldToManualRecordingIfNeeded(),
               recordingTrigger == nil,
               appState.state.canStartRecording
@@ -1954,6 +1961,18 @@ final class AppContainer {
             recordingTrigger = nil
             settings.isLiveSubtitlesEnabled = false
         }
+    }
+
+    private func validatedAudioDeviceID(_ deviceID: String?) -> String? {
+        guard let deviceID, !deviceID.isEmpty else {
+            return nil
+        }
+
+        guard MicrophoneDeviceCatalog.inputDevices().contains(where: { $0.id == deviceID }) else {
+            return nil
+        }
+
+        return deviceID
     }
 
     private func startVoiceModeIfPossible() async {

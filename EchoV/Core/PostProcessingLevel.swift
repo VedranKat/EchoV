@@ -25,7 +25,7 @@ enum PostProcessingLevel: String, CaseIterable, Identifiable, Sendable {
         case .minimal:
             "Only fix obvious artifacts and nonsensical fragments."
         case .balanced:
-            "Clean fillers, repeats, and false starts while preserving intent."
+            "Clean fillers, repeats, false starts, and obvious grammar while preserving intent."
         case .concise:
             "Reduce noise aggressively and produce short, direct text."
         }

@@ -39,6 +39,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        container.refreshPermissions(notifyOnChange: false)
         populate(menu)
     }
 

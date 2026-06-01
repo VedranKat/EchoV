@@ -23,7 +23,8 @@ final class PermissionState {
     func refresh(
         microphonePermission: MicrophonePermissionService,
         accessibilityPermission: AccessibilityPermissionService,
-        startupPermission: StartupPermissionService
+        startupPermission: StartupPermissionService,
+        notifyOnChange: Bool = true
     ) {
         let microphoneAuthorizationStatus = microphonePermission.authorizationStatus()
         let isAccessibilityTrusted = accessibilityPermission.isTrusted()
@@ -40,6 +41,8 @@ final class PermissionState {
         self.microphoneAuthorizationStatus = microphoneAuthorizationStatus
         self.isAccessibilityTrusted = isAccessibilityTrusted
         self.startupStatus = startupStatus
-        onPermissionsChanged?()
+        if notifyOnChange {
+            onPermissionsChanged?()
+        }
     }
 }
