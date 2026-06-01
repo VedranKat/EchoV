@@ -35,6 +35,20 @@ final class PrimeVocabularyTests: XCTestCase {
         XCTAssertEqual(result, "Open EchoV and then EchoV.")
     }
 
+    func testAliasReplacerUsesSafeMultiWordAliasesForAllAggressivenessLevels() {
+        let entries = [
+            PrimeVocabularyEntry(term: "EchoV", aliases: ["echo vee"], aggressiveness: .balanced),
+            PrimeVocabularyEntry(term: "Gemma 4", aliases: ["gemma four"], aggressiveness: .aggressive)
+        ]
+
+        let result = PrimeVocabularyAliasReplacer.replacingSafeExactAliases(
+            in: "Use echo vee with gemma four.",
+            entries: entries
+        )
+
+        XCTAssertEqual(result, "Use EchoV with Gemma 4.")
+    }
+
     func testConservativeAliasReplacerSkipsOneWordAliases() {
         let entry = PrimeVocabularyEntry(
             term: "Go",
@@ -43,6 +57,36 @@ final class PrimeVocabularyTests: XCTestCase {
         )
 
         let result = PrimeVocabularyAliasReplacer.replacingSafeExactAliases(
+            in: "I need to go to the store.",
+            entries: [entry]
+        )
+
+        XCTAssertEqual(result, "I need to go to the store.")
+    }
+
+    func testOutputAliasReplacerUsesExplicitOneWordHeardAsVariants() {
+        let entry = PrimeVocabularyEntry(
+            term: "Cline",
+            aliases: ["Klein"],
+            aggressiveness: .conservative
+        )
+
+        let result = PrimeVocabularyAliasReplacer.replacingExactOutputAliases(
+            in: "Ask Klein to review it.",
+            entries: [entry]
+        )
+
+        XCTAssertEqual(result, "Ask Cline to review it.")
+    }
+
+    func testOutputAliasReplacerSkipsAliasesThatAlreadyMatchTerm() {
+        let entry = PrimeVocabularyEntry(
+            term: "Go",
+            aliases: ["go"],
+            aggressiveness: .conservative
+        )
+
+        let result = PrimeVocabularyAliasReplacer.replacingExactOutputAliases(
             in: "I need to go to the store.",
             entries: [entry]
         )

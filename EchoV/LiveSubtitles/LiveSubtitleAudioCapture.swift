@@ -79,10 +79,9 @@ final class LiveSubtitleAudioCapture {
         inputNode.installTap(
             onBus: 0,
             bufferSize: 1024,
-            format: inputFormat
-        ) { buffer, _ in
-            session.process(buffer, receivedAt: Date())
-        }
+            format: inputFormat,
+            block: makeLiveSubtitleTapHandler(session: session)
+        )
 
         do {
             try engine.start()
@@ -143,6 +142,12 @@ final class LiveSubtitleAudioCapture {
         @unknown default:
             throw AppError.microphonePermissionDenied
         }
+    }
+}
+
+private func makeLiveSubtitleTapHandler(session: LiveSubtitleCaptureSession) -> AVAudioNodeTapBlock {
+    { buffer, _ in
+        session.process(buffer, receivedAt: Date())
     }
 }
 

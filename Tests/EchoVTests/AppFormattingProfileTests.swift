@@ -37,4 +37,12 @@ final class AppFormattingProfileTests: XCTestCase {
             .general
         )
     }
+
+    func testTerminalPromptInstructionMentionsSpokenCommandPunctuation() {
+        let instruction = AppFormattingProfile.terminal.promptInstruction
+
+        XCTAssertEqual(instruction.contains("Output shell text, not prose"), true)
+        XCTAssertEqual(instruction.contains("\"dash dash\" to --"), true)
+        XCTAssertEqual(instruction.contains("\"new line\" to line breaks"), true)
+    }
 }

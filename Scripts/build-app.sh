@@ -17,9 +17,16 @@ cd "$ROOT_DIR"
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-"$SCRATCH_PATH/clang-module-cache"}"
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-"$SCRATCH_PATH/swiftpm-module-cache"}"
 
-swift build \
-  -c "$CONFIGURATION" \
+SWIFT_BUILD_ARGS=(
+  -c "$CONFIGURATION"
   --scratch-path "$SCRATCH_PATH"
+)
+
+if [[ "${ECHOV_DEV_DIAGNOSTICS:-0}" == "1" ]]; then
+  SWIFT_BUILD_ARGS+=(-Xswiftc -DECHOV_DEV_DIAGNOSTICS)
+fi
+
+swift build "${SWIFT_BUILD_ARGS[@]}"
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"

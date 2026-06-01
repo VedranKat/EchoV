@@ -469,7 +469,7 @@ struct TranscriptionSettingsView: View {
     }
 
     private var vocabularySubtitle: String {
-        "\(container.settings.primeVocabularyEntries.count) of \(PrimeVocabularyEntry.maximumEntries) terms configured. Terms and aliases are capped at \(PrimeVocabularyEntry.maximumTermLength) characters."
+        "\(container.settings.primeVocabularyEntries.count) of \(PrimeVocabularyEntry.maximumEntries) terms configured. Add heard-as variants for words ASR commonly gets wrong."
     }
 
     private var vocabularyEditor: some View {
@@ -481,7 +481,7 @@ struct TranscriptionSettingsView: View {
                     TextField("Term", text: $newVocabularyTerm)
                         .textFieldStyle(.roundedBorder)
 
-                    TextField("Aliases, comma separated", text: $newVocabularyAliases)
+                    TextField("Heard as, comma separated", text: $newVocabularyAliases)
                         .textFieldStyle(.roundedBorder)
 
                     HStack(alignment: .center, spacing: 10) {
@@ -526,7 +526,7 @@ struct TranscriptionSettingsView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 120)
 
-            TextField("Aliases, comma separated", text: $newVocabularyAliases)
+            TextField("Heard as, comma separated", text: $newVocabularyAliases)
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 180)
 
@@ -789,6 +789,8 @@ struct TranscriptionSettingsView: View {
 
 private struct PrimeVocabularyEntryRow: View {
     @Environment(AppContainer.self) private var container
+    @State private var isEditingAliases = false
+    @State private var draftAliases = ""
     let entry: PrimeVocabularyEntry
 
     var body: some View {
@@ -803,46 +805,117 @@ private struct PrimeVocabularyEntryRow: View {
                     }
                 }
 
-                Text(aliasesText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                if isEditingAliases {
+                    TextField("Heard as, comma separated", text: $draftAliases)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 220)
+
+                    if let validationFailure = aliasValidationFailure {
+                        Text(validationFailure.message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } else {
+                    Text(aliasesText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
 
             Spacer(minLength: 12)
 
-            Picker("", selection: Binding(
-                get: { entry.aggressiveness },
-                set: { container.setPrimeVocabularyEntryAggressiveness(id: entry.id, aggressiveness: $0) }
-            )) {
-                ForEach(PrimeVocabularyAggressiveness.allCases) { aggressiveness in
-                    Text(aggressiveness.title).tag(aggressiveness)
+            if isEditingAliases {
+                HStack(spacing: 8) {
+                    Button {
+                        saveAliases()
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .disabled(aliasValidationFailure != nil)
+                    .help("Save heard-as variants")
+
+                    Button {
+                        cancelAliasEditing()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .help("Cancel")
                 }
-            }
-            .labelsHidden()
-            .frame(width: 150)
+                .buttonStyle(.borderless)
+            } else {
+                Picker("", selection: Binding(
+                    get: { entry.aggressiveness },
+                    set: { container.setPrimeVocabularyEntryAggressiveness(id: entry.id, aggressiveness: $0) }
+                )) {
+                    ForEach(PrimeVocabularyAggressiveness.allCases) { aggressiveness in
+                        Text(aggressiveness.title).tag(aggressiveness)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 150)
 
-            Toggle("", isOn: Binding(
-                get: { entry.isEnabled },
-                set: { container.setPrimeVocabularyEntryEnabled(id: entry.id, isEnabled: $0) }
-            ))
-            .labelsHidden()
+                Toggle("", isOn: Binding(
+                    get: { entry.isEnabled },
+                    set: { container.setPrimeVocabularyEntryEnabled(id: entry.id, isEnabled: $0) }
+                ))
+                .labelsHidden()
 
-            Button(role: .destructive) {
-                container.removePrimeVocabularyEntry(id: entry.id)
-            } label: {
-                Image(systemName: "trash")
+                Button {
+                    startAliasEditing()
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .help("Edit heard-as variants")
+                .buttonStyle(.borderless)
+
+                Button(role: .destructive) {
+                    container.removePrimeVocabularyEntry(id: entry.id)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
             }
-            .buttonStyle(.borderless)
         }
         .padding(.vertical, 5)
     }
 
+    private var aliasValidationFailure: PrimeVocabularyValidationFailure? {
+        PrimeVocabularyEntry.validationFailure(
+            term: entry.term,
+            aliasCandidates: PrimeVocabularyEntry.aliasCandidates(fromCommaSeparatedText: draftAliases),
+            existingEntries: container.settings.primeVocabularyEntries.filter { $0.id != entry.id }
+        )
+    }
+
     private var aliasesText: String {
         if entry.aliases.isEmpty {
-            return "No aliases. Prime will use this as a contextual spelling hint."
+            return "No heard-as variants. Prime will use this as a contextual spelling hint."
         }
 
-        return "Aliases: \(entry.aliases.joined(separator: ", "))"
+        return "Heard as: \(entry.aliases.joined(separator: ", "))"
+    }
+
+    private func startAliasEditing() {
+        draftAliases = entry.aliases.joined(separator: ", ")
+        isEditingAliases = true
+    }
+
+    private func cancelAliasEditing() {
+        draftAliases = ""
+        isEditingAliases = false
+    }
+
+    private func saveAliases() {
+        let aliasCandidates = PrimeVocabularyEntry.aliasCandidates(fromCommaSeparatedText: draftAliases)
+        guard aliasValidationFailure == nil else {
+            return
+        }
+
+        guard container.setPrimeVocabularyEntryAliases(id: entry.id, aliases: aliasCandidates) else {
+            return
+        }
+
+        cancelAliasEditing()
     }
 }

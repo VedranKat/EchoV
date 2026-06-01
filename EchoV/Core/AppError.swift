@@ -1,6 +1,6 @@
 import Foundation
 
-enum AppError: LocalizedError, Equatable {
+enum AppError: LocalizedError, Equatable, Sendable {
     case microphonePermissionDenied
     case accessibilityPermissionDenied
     case startupRegistrationFailed(details: String)

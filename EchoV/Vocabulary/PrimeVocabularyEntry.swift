@@ -161,15 +161,15 @@ enum PrimeVocabularyValidationFailure: Equatable, Sendable {
         case .duplicateTerm(let term):
             "\"\(term)\" is already in custom vocabulary."
         case .duplicateAlias(let alias):
-            "\"\(alias)\" is already used as a term or alias."
+            "\"\(alias)\" is already used as a term or heard-as variant."
         case .entryLimitReached:
             "Custom vocabulary is limited to \(PrimeVocabularyEntry.maximumEntries) terms."
         case .termTooLong(let maximumLength):
             "Terms are limited to \(maximumLength) characters."
         case .aliasTooLong(let alias, let maximumLength):
-            "\"\(alias)\" is longer than the \(maximumLength)-character alias limit."
+            "\"\(alias)\" is longer than the \(maximumLength)-character heard-as limit."
         case .tooManyAliases(let maximumAliases):
-            "Each term can have up to \(maximumAliases) aliases."
+            "Each term can have up to \(maximumAliases) heard-as variants."
         }
     }
 }

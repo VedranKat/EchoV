@@ -2,28 +2,48 @@ import Foundation
 
 enum PrimeVocabularyAliasReplacer {
     static func replacingSafeExactAliases(in text: String, entries: [PrimeVocabularyEntry]) -> String {
-        var result = text
+        replacingAliases(in: text, entries: entries, isEligible: isSafeExactAlias)
+    }
 
-        for entry in entries where entry.isEnabled && entry.aggressiveness == .conservative {
-            for alias in entry.aliases where isSafeExactAlias(alias, for: entry) {
-                result = replacing(alias: alias, with: entry.term, in: result)
-            }
-        }
-
-        return result
+    static func replacingExactOutputAliases(in text: String, entries: [PrimeVocabularyEntry]) -> String {
+        replacingAliases(in: text, entries: entries, isEligible: isExactOutputAlias)
     }
 
     static func isSafeExactAlias(_ alias: String, for entry: PrimeVocabularyEntry) -> Bool {
+        isExactOutputAlias(alias, for: entry)
+            && PrimeVocabularyEntry.wordCount(in: alias) >= 2
+    }
+
+    static func isExactOutputAlias(_ alias: String, for entry: PrimeVocabularyEntry) -> Bool {
         let normalizedAlias = PrimeVocabularyEntry.normalizedPhrase(alias)
         guard !normalizedAlias.isEmpty else {
             return false
         }
 
-        guard normalizedAlias.localizedCaseInsensitiveCompare(entry.term) != .orderedSame else {
-            return false
+        return normalizedAlias.localizedCaseInsensitiveCompare(entry.term) != .orderedSame
+    }
+
+    private static func replacingAliases(
+        in text: String,
+        entries: [PrimeVocabularyEntry],
+        isEligible: (String, PrimeVocabularyEntry) -> Bool
+    ) -> String {
+        var result = text
+
+        let replacements = entries
+            .filter(\.isEnabled)
+            .flatMap { entry in
+                entry.aliases
+                    .filter { isEligible($0, entry) }
+                    .map { alias in AliasReplacement(alias: alias, term: entry.term) }
+            }
+            .sorted { first, second in first.alias.count > second.alias.count }
+
+        for replacement in replacements {
+            result = replacing(alias: replacement.alias, with: replacement.term, in: result)
         }
 
-        return PrimeVocabularyEntry.wordCount(in: normalizedAlias) >= 2
+        return result
     }
 
     private static func replacing(alias: String, with term: String, in text: String) -> String {
@@ -47,4 +67,9 @@ enum PrimeVocabularyAliasReplacer {
 
         return result
     }
+}
+
+private struct AliasReplacement {
+    let alias: String
+    let term: String
 }

@@ -117,6 +117,7 @@ final class AppContainer {
     private let selectedTextCapture: SelectedTextCaptureService
     private let textResponseSessionNotifier: TextResponseSessionNotifier
     private var localTextGenerationEngine: any LocalTextGenerationEngine
+    private var localTextGenerationConfigurationGeneration = 0
     private var hasStarted = false
     private var recordingTrigger: RecordingTrigger?
     private var isVoiceGateArmed = false
@@ -750,6 +751,26 @@ final class AppContainer {
         }
     }
 
+    func setPrimeVocabularyEntryAliases(id: UUID, aliases: [String]) -> Bool {
+        var entries = settings.primeVocabularyEntries
+        guard let index = entries.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+
+        let existingEntries = entries.filter { $0.id != id }
+        guard PrimeVocabularyEntry.validationFailure(
+            term: entries[index].term,
+            aliasCandidates: aliases,
+            existingEntries: existingEntries
+        ) == nil else {
+            return false
+        }
+
+        entries[index].aliases = PrimeVocabularyEntry.normalizedAliases(aliases)
+        settings.primeVocabularyEntries = PrimeVocabularyEntry.normalizedEntries(entries)
+        return true
+    }
+
     private func updatePrimeVocabularyEntry(
         id: UUID,
         transform: (inout PrimeVocabularyEntry) -> Void
@@ -1334,6 +1355,9 @@ final class AppContainer {
     }
 
     private func configurePostProcessingEngineFromSelectedModel() {
+        localTextGenerationConfigurationGeneration += 1
+        let configurationGeneration = localTextGenerationConfigurationGeneration
+
         if settings.isPostProcessingEnabled, !canEnablePostProcessing {
             settings.isPostProcessingEnabled = false
         }
@@ -1388,7 +1412,7 @@ final class AppContainer {
         liveSubtitleController.setTextGenerationEngine(subtitleTextGenerationEngine)
 
         if shouldKeepLocalTextModelReady, hasValidLocalTextModel {
-            preloadLocalTextGenerationModel(configuredEngine)
+            preloadLocalTextGenerationModel(configuredEngine, generation: configurationGeneration)
         }
     }
 
@@ -1428,23 +1452,44 @@ final class AppContainer {
         }
     }
 
-    private func preloadLocalTextGenerationModel(_ engine: any LocalTextGenerationEngine) {
+    private func preloadLocalTextGenerationModel(_ engine: any LocalTextGenerationEngine, generation: Int) {
         appState.lastDetail = "Loading local text model..."
-        DiagnosticLog.write("preloadLocalTextGenerationModel started")
+        DiagnosticLog.write("preloadLocalTextGenerationModel started generation=\(generation) engine=\(engine.displayName)")
         appState.notifyStatusChanged()
 
-        Task {
+        Task { @MainActor in
             do {
                 try await engine.prepare()
-                DiagnosticLog.write("preloadLocalTextGenerationModel completed")
+                guard generation == localTextGenerationConfigurationGeneration else {
+                    DiagnosticLog.write(
+                        "preloadLocalTextGenerationModel ignored stale completion generation=\(generation) active=\(localTextGenerationConfigurationGeneration)"
+                    )
+                    return
+                }
+
+                DiagnosticLog.write("preloadLocalTextGenerationModel completed generation=\(generation)")
                 appState.lastDetail = "Local text model ready."
                 appState.notifyStatusChanged()
             } catch let error as AppError {
+                guard generation == localTextGenerationConfigurationGeneration else {
+                    DiagnosticLog.write(
+                        "preloadLocalTextGenerationModel ignored stale AppError generation=\(generation) active=\(localTextGenerationConfigurationGeneration) details=\(error.technicalDetails ?? "none")"
+                    )
+                    return
+                }
+
                 DiagnosticLog.write("preloadLocalTextGenerationModel AppError: \(error.userMessage) details=\(error.technicalDetails ?? "none")")
                 appState.lastError = error
                 appState.lastDetail = error.userMessage
                 appState.notifyStatusChanged()
             } catch {
+                guard generation == localTextGenerationConfigurationGeneration else {
+                    DiagnosticLog.write(
+                        "preloadLocalTextGenerationModel ignored stale Error generation=\(generation) active=\(localTextGenerationConfigurationGeneration) error=\(error.localizedDescription)"
+                    )
+                    return
+                }
+
                 DiagnosticLog.write("preloadLocalTextGenerationModel Error: \(error.localizedDescription)")
                 appState.lastError = .cleanupFailed(details: error.localizedDescription)
                 appState.lastDetail = "Local text model failed to load."

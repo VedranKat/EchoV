@@ -38,7 +38,7 @@ enum AppFormattingProfile: String, CaseIterable, Codable, Equatable, Identifiabl
         case .code:
             "Clean for a code editor or technical workflow. Preserve identifiers, API names, capitalization, punctuation, symbols, commands, and code-like fragments. Avoid smart punctuation."
         case .terminal:
-            "Clean for a terminal or shell-oriented field. Preserve commands, flags, paths, punctuation, casing, and line breaks. Do not rewrite command-like text into prose."
+            "Clean for a terminal or shell-oriented field. Output shell text, not prose. Convert clear spoken command punctuation like \"dash dash\" to -- and \"new line\" to line breaks. Preserve commands, flags, paths, casing, and punctuation."
         case .document:
             "Clean for notes or long-form writing. Use readable sentence and paragraph structure while preserving the speaker's order and meaning."
         }

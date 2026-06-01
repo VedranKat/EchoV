@@ -157,7 +157,10 @@ final class LiveSubtitleController {
         do {
             store.updateStatus("Transcribing live audio...")
             normalizedAudioURL = try await normalizer.normalize(chunk.fileURL)
-            let transcript = try await withTimeout(seconds: Self.transcriptionTimeoutSeconds) {
+            let transcript = try await withTimeout(
+                seconds: Self.transcriptionTimeoutSeconds,
+                timeoutError: .transcriptionTimedOut
+            ) {
                 try await self.asrEngine.transcribe(audioURL: normalizedAudioURL, options: ASROptions())
             }
             let rawText = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -206,7 +209,10 @@ final class LiveSubtitleController {
             store.setPostProcessing(true)
             store.updateStatus(subtitleMode == .translatedSubtitles ? "Translating subtitle..." : "Cleaning subtitle...")
             let postProcessor = LiveSubtitlePostProcessor(textGenerationEngine: textGenerationEngine)
-            let processedText = try await withTimeout(seconds: Self.postProcessingTimeoutSeconds) {
+            let processedText = try await withTimeout(
+                seconds: Self.postProcessingTimeoutSeconds,
+                timeoutError: .cleanupFailed(details: "Live subtitle post-processing timed out.")
+            ) {
                 try await postProcessor.process(
                     text: rawText,
                     mode: subtitleMode,
@@ -229,6 +235,9 @@ final class LiveSubtitleController {
             store.updateStatus(audioSourceStatusDetail)
         } catch let error as AppError {
             store.setPostProcessing(false)
+            DiagnosticLog.write(
+                "Live subtitle post-processing fallback: \(error.userMessage) details=\(error.technicalDetails ?? "none")"
+            )
             if !showRawFirst {
                 latestDisplayedEnd = chunk.endedAt
                 store.showSubtitle(rawText, chunkID: chunk.id, isFinal: true)
@@ -238,6 +247,7 @@ final class LiveSubtitleController {
             store.updateStatus(postProcessingFallbackDetail(for: error))
         } catch {
             store.setPostProcessing(false)
+            DiagnosticLog.write("Live subtitle post-processing fallback: \(error.localizedDescription)")
             if !showRawFirst {
                 latestDisplayedEnd = chunk.endedAt
                 store.showSubtitle(rawText, chunkID: chunk.id, isFinal: true)
@@ -295,8 +305,12 @@ final class LiveSubtitleController {
         switch error {
         case .cleanupModelNotConfigured:
             "Prime model unavailable; showing raw captions."
+        case .cleanupFailed(let details) where details.localizedCaseInsensitiveContains("timed out"):
+            "Prime is behind; showing raw captions."
+        case .cleanupFailed:
+            "Prime could not finish this subtitle; showing raw captions."
         default:
-            "\(error.userMessage) Showing raw captions."
+            "Prime could not finish this subtitle; showing raw captions."
         }
     }
 
@@ -330,6 +344,7 @@ final class LiveSubtitleController {
 
     private func withTimeout<T: Sendable>(
         seconds: UInt64,
+        timeoutError: AppError,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
@@ -339,11 +354,11 @@ final class LiveSubtitleController {
 
             group.addTask {
                 try await Task.sleep(for: .seconds(seconds))
-                throw AppError.cleanupFailed(details: "Live subtitle operation timed out.")
+                throw timeoutError
             }
 
             guard let result = try await group.next() else {
-                throw AppError.cleanupFailed(details: "Live subtitle operation timed out.")
+                throw timeoutError
             }
 
             group.cancelAll()
