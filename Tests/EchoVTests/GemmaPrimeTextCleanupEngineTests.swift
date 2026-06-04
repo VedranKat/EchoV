@@ -282,6 +282,29 @@ final class GemmaPrimeTextCleanupEngineTests: XCTestCase {
         let prompt = await model.lastPrompt
         XCTAssertGreaterThanOrEqual(prompt?.maxTokens ?? 0, 1536)
     }
+
+    func testSharedCleanupEngineDoesNotShutdownTextGenerationEngine() async {
+        let model = StubLocalTextGenerationEngine(output: "Cleaned")
+        let engine = GemmaPrimeTextCleanupEngine(textGenerationEngine: model)
+
+        await engine.shutdown()
+
+        let shutdownCallCount = await model.shutdownCallCount
+        XCTAssertEqual(shutdownCallCount, 0)
+    }
+
+    func testOwnedCleanupEngineShutsDownTextGenerationEngine() async {
+        let model = StubLocalTextGenerationEngine(output: "Cleaned")
+        let engine = GemmaPrimeTextCleanupEngine(
+            textGenerationEngine: model,
+            ownsTextGenerationEngine: true
+        )
+
+        await engine.shutdown()
+
+        let shutdownCallCount = await model.shutdownCallCount
+        XCTAssertEqual(shutdownCallCount, 1)
+    }
 }
 
 private actor StubLocalTextGenerationEngine: LocalTextGenerationEngine {
@@ -289,6 +312,7 @@ private actor StubLocalTextGenerationEngine: LocalTextGenerationEngine {
     let displayName = "Stub"
     let output: String
     private(set) var lastPrompt: LocalChatPrompt?
+    private(set) var shutdownCallCount = 0
 
     init(output: String) {
         self.output = output
@@ -299,5 +323,9 @@ private actor StubLocalTextGenerationEngine: LocalTextGenerationEngine {
     func generate(prompt: LocalChatPrompt) async throws -> String {
         lastPrompt = prompt
         return output
+    }
+
+    func shutdown() async {
+        shutdownCallCount += 1
     }
 }

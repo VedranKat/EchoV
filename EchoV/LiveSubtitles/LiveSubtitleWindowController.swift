@@ -95,23 +95,18 @@ private struct LiveSubtitleOverlayView: View {
         HStack(spacing: 12) {
             statusDot
 
-            VStack(alignment: .center, spacing: 4) {
-                if shouldShowPreviousLine {
-                    Text(store.previousText)
-                        .font(.system(size: previousTextSize, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.68))
+            VStack(alignment: .center, spacing: 5) {
+                ForEach(visibleLines) { line in
+                    Text(line.text)
+                        .font(.system(size: currentTextSize, weight: .semibold))
+                        .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                 }
-
-                Text(store.currentText)
-                    .font(.system(size: currentTextSize, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(currentLineLimit)
-                    .minimumScaleFactor(0.76)
             }
             .frame(maxWidth: .infinity)
+            .frame(maxHeight: .infinity, alignment: .bottom)
 
             statusDot.opacity(0)
         }
@@ -159,19 +154,11 @@ private struct LiveSubtitleOverlayView: View {
         return store.isCurrentTextFinal ? "Final subtitle" : "Raw subtitle"
     }
 
-    private var shouldShowPreviousLine: Bool {
-        container.settings.liveSubtitleMaxLines > 1 && !store.previousText.isEmpty
-    }
-
-    private var currentLineLimit: Int {
-        max(1, container.settings.liveSubtitleMaxLines - (shouldShowPreviousLine ? 1 : 0))
-    }
-
     private var currentTextSize: CGFloat {
         CGFloat(container.settings.liveSubtitleTextSize)
     }
 
-    private var previousTextSize: CGFloat {
-        max(14, currentTextSize * 0.78)
+    private var visibleLines: [VisibleLiveSubtitleLine] {
+        Array(store.visibleLines.suffix(max(1, container.settings.liveSubtitleMaxLines)))
     }
 }

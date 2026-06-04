@@ -136,15 +136,17 @@ struct LiveSubtitleSettingsView: View {
                                 StatusBadge(text: indicator.title, tone: indicator.tone)
                             }
 
-                            DividerLine()
+                            if container.settings.liveSubtitleMode == .cleanedCaptions {
+                                DividerLine()
 
-                            SettingsRow(
-                                icon: "bolt",
-                                title: "Show raw while Prime works",
-                                subtitle: "Raw Parakeet captions appear first, then Prime replaces them when it is fast enough."
-                            ) {
-                                Toggle("", isOn: Bindable(container.settings).liveSubtitleShowsRawWhileProcessing)
-                                    .labelsHidden()
+                                SettingsRow(
+                                    icon: "bolt",
+                                    title: "Show raw while Prime works",
+                                    subtitle: "Raw Parakeet captions appear first, then Prime replaces them when it is fast enough."
+                                ) {
+                                    Toggle("", isOn: Bindable(container.settings).liveSubtitleShowsRawWhileProcessing)
+                                        .labelsHidden()
+                                }
                             }
                         }
                     }
@@ -207,7 +209,7 @@ struct LiveSubtitleSettingsView: View {
                         SettingsRow(
                             icon: "text.alignleft",
                             title: "Max lines",
-                            subtitle: "Limit the visible subtitle stack."
+                            subtitle: "Show up to this many recent subtitle rows at once."
                         ) {
                             Picker(
                                 "",

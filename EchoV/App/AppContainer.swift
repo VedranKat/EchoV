@@ -4,6 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class AppContainer {
+    private static let liveSubtitlePrimeIdleShutdownDelaySeconds: TimeInterval = 120
+
     private enum HotkeyID {
         static let toggle = UInt32(1)
         static let pushToTalk = UInt32(2)
@@ -22,6 +24,18 @@ final class AppContainer {
         case voiceGate
         case voiceMode
         case liveSubtitles
+    }
+
+    private struct LocalTextGenerationEngineKey: Equatable {
+        let runtimePath: String
+        let modelPath: String
+        let modelDefinitionID: String
+
+        init(runtime: LlamaRuntimeSelection, model: PostProcessingModelSelection) {
+            runtimePath = runtime.url.standardizedFileURL.path
+            modelPath = model.url.standardizedFileURL.path
+            modelDefinitionID = model.modelDefinition.id
+        }
     }
 
     private enum VoiceGuardWorkflow {
@@ -117,6 +131,9 @@ final class AppContainer {
     private let selectedTextCapture: SelectedTextCaptureService
     private let textResponseSessionNotifier: TextResponseSessionNotifier
     private var localTextGenerationEngine: any LocalTextGenerationEngine
+    private var localTextGenerationEngineKey: LocalTextGenerationEngineKey?
+    private var liveSubtitleTextGenerationEngineKey: LocalTextGenerationEngineKey?
+    private var localTextGenerationIdleShutdownTask: Task<Void, Never>?
     private var localTextGenerationConfigurationGeneration = 0
     private var hasStarted = false
     private var recordingTrigger: RecordingTrigger?
@@ -376,6 +393,8 @@ final class AppContainer {
             isVoiceProfileEnrollmentRecording = false
             voiceProfileEnrollmentRecording = nil
         }
+        localTextGenerationIdleShutdownTask?.cancel()
+        localTextGenerationIdleShutdownTask = nil
         await pipeline.shutdownCleanupEngine()
         await localTextGenerationEngine.shutdown()
     }
@@ -936,7 +955,8 @@ final class AppContainer {
                 runtimeURL: runtime.url,
                 modelDefinition: selection.modelDefinition,
                 displayName: selection.displayName
-            )
+            ),
+            ownsTextGenerationEngine: true
         )
     }
 
@@ -1360,43 +1380,50 @@ final class AppContainer {
     }
 
     private func configurePostProcessingEngineFromSelectedModel() {
-        localTextGenerationConfigurationGeneration += 1
-        let configurationGeneration = localTextGenerationConfigurationGeneration
-
         if settings.isPostProcessingEnabled, !canEnablePostProcessing {
             settings.isPostProcessingEnabled = false
         }
 
-        let previousTextGenerationEngine = localTextGenerationEngine
-        let shouldKeepLocalTextModelReady =
-            settings.isPostProcessingEnabled
-            || (settings.isVoiceModeEnabled && settings.voiceModeResponseBackend == .localLlama)
-            || (settings.isLiveSubtitlesEnabled && settings.liveSubtitleMode.requiresPostProcessing)
+        let shouldKeepLocalTextModelReady = self.shouldKeepLocalTextModelReady
         let hasValidLocalTextModel =
             modelStore.selectedLlamaRuntime?.validation.isValid == true
             && modelStore.selectedPostProcessingModel?.validation.isValid == true
-        let configuredEngine: any LocalTextGenerationEngine
-
+        let selectedEngineKey: LocalTextGenerationEngineKey?
         if
-            shouldKeepLocalTextModelReady,
             hasValidLocalTextModel,
             let runtime = modelStore.selectedLlamaRuntime,
             let selection = modelStore.selectedPostProcessingModel
         {
-            configuredEngine = Gemma4LocalTextGenerationEngine(
-                modelURL: selection.url,
-                runtimeURL: runtime.url,
-                modelDefinition: selection.modelDefinition,
-                displayName: selection.displayName
-            )
+            selectedEngineKey = LocalTextGenerationEngineKey(runtime: runtime, model: selection)
         } else {
-            configuredEngine = UnconfiguredLocalTextGenerationEngine()
+            selectedEngineKey = nil
+        }
+        let desiredEngineKey = shouldKeepLocalTextModelReady ? selectedEngineKey : nil
+        let wasUsingLiveSubtitlePrime = liveSubtitleTextGenerationEngineKey != nil
+        var didChangeEngine = false
+
+        if let desiredEngineKey {
+            cancelLocalTextGenerationIdleShutdown()
+            didChangeEngine = desiredEngineKey != localTextGenerationEngineKey
+            if didChangeEngine {
+                configureLocalTextGenerationEngine(key: desiredEngineKey)
+            }
+        } else if localTextGenerationEngineKey != nil {
+            if wasUsingLiveSubtitlePrime {
+                scheduleLocalTextGenerationIdleShutdown()
+            } else {
+                didChangeEngine = true
+                unconfigureLocalTextGenerationEngine()
+            }
         }
 
-        localTextGenerationEngine = configuredEngine
-        Task {
-            await previousTextGenerationEngine.shutdown()
+        if didChangeEngine || desiredEngineKey != nil || wasUsingLiveSubtitlePrime {
+            localTextGenerationConfigurationGeneration += 1
         }
+
+        let configuredEngine: any LocalTextGenerationEngine = desiredEngineKey == nil
+            ? UnconfiguredLocalTextGenerationEngine()
+            : localTextGenerationEngine
         voiceModeController.setTextGenerationEngine(
             voiceModeTextGenerationEngine(localTextGenerationEngine: configuredEngine)
         )
@@ -1411,14 +1438,117 @@ final class AppContainer {
                 textGenerationEngine: cleanupTextGenerationEngine
             )
         )
-        let subtitleTextGenerationEngine: any LocalTextGenerationEngine = settings.liveSubtitleMode.requiresPostProcessing
+        let subtitleShouldUseLocalTextEngine =
+            settings.isLiveSubtitlesEnabled
+            && settings.liveSubtitleMode.requiresPostProcessing
+            && desiredEngineKey != nil
+        let subtitleTextGenerationEngine: any LocalTextGenerationEngine = subtitleShouldUseLocalTextEngine
             ? configuredEngine
             : UnconfiguredLocalTextGenerationEngine()
-        liveSubtitleController.setTextGenerationEngine(subtitleTextGenerationEngine)
+        let subtitleEngineKey = subtitleShouldUseLocalTextEngine ? desiredEngineKey : nil
+        if didChangeEngine || subtitleEngineKey != liveSubtitleTextGenerationEngineKey {
+            liveSubtitleController.setTextGenerationEngine(subtitleTextGenerationEngine)
+            liveSubtitleTextGenerationEngineKey = subtitleEngineKey
+        }
 
         if shouldKeepLocalTextModelReady, hasValidLocalTextModel {
+            let configurationGeneration = localTextGenerationConfigurationGeneration
             preloadLocalTextGenerationModel(configuredEngine, generation: configurationGeneration)
         }
+    }
+
+    private func configureLocalTextGenerationEngine(key: LocalTextGenerationEngineKey) {
+        guard
+            let runtime = modelStore.selectedLlamaRuntime,
+            let selection = modelStore.selectedPostProcessingModel
+        else {
+            return
+        }
+
+        let previousTextGenerationEngine = localTextGenerationEngine
+        localTextGenerationEngine = Gemma4LocalTextGenerationEngine(
+            modelURL: selection.url,
+            runtimeURL: runtime.url,
+            modelDefinition: selection.modelDefinition,
+            displayName: selection.displayName
+        )
+        localTextGenerationEngineKey = key
+        DiagnosticLog.write(
+            "local text engine configured runtime=\(key.runtimePath) model=\(key.modelPath) definition=\(key.modelDefinitionID)"
+        )
+
+        Task {
+            await previousTextGenerationEngine.shutdown()
+        }
+    }
+
+    private func unconfigureLocalTextGenerationEngine() {
+        cancelLocalTextGenerationIdleShutdown()
+
+        let previousTextGenerationEngine = localTextGenerationEngine
+        localTextGenerationEngine = UnconfiguredLocalTextGenerationEngine()
+        localTextGenerationEngineKey = nil
+        DiagnosticLog.write("local text engine unconfigured")
+
+        Task {
+            await previousTextGenerationEngine.shutdown()
+        }
+    }
+
+    private func scheduleLocalTextGenerationIdleShutdown() {
+        guard localTextGenerationIdleShutdownTask == nil,
+              let scheduledKey = localTextGenerationEngineKey
+        else {
+            return
+        }
+
+        DiagnosticLog.write(
+            "local text engine idle shutdown scheduled delay=\(Self.liveSubtitlePrimeIdleShutdownDelaySeconds)s"
+        )
+        localTextGenerationIdleShutdownTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(Int(Self.liveSubtitlePrimeIdleShutdownDelaySeconds * 1000)))
+            } catch {
+                return
+            }
+
+            guard let self else {
+                return
+            }
+
+            self.localTextGenerationIdleShutdownTask = nil
+            guard self.localTextGenerationEngineKey == scheduledKey,
+                  !self.shouldKeepLocalTextModelReady
+            else {
+                return
+            }
+
+            let idleTextGenerationEngine = self.localTextGenerationEngine
+            self.localTextGenerationEngine = UnconfiguredLocalTextGenerationEngine()
+            self.localTextGenerationEngineKey = nil
+            self.localTextGenerationConfigurationGeneration += 1
+            DiagnosticLog.write("local text engine idle shutdown firing")
+
+            Task {
+                await idleTextGenerationEngine.shutdown()
+            }
+        }
+    }
+
+    private func cancelLocalTextGenerationIdleShutdown() {
+        guard let localTextGenerationIdleShutdownTask else {
+            return
+        }
+
+        localTextGenerationIdleShutdownTask.cancel()
+        self.localTextGenerationIdleShutdownTask = nil
+        DiagnosticLog.write("local text engine idle shutdown canceled")
+    }
+
+    private var shouldKeepLocalTextModelReady: Bool {
+        settings.isPostProcessingEnabled
+            || (settings.isVoiceModeEnabled && settings.voiceModeResponseBackend == .localLlama)
+            || (settings.isLiveSubtitlesEnabled && settings.liveSubtitleMode.requiresPostProcessing)
     }
 
     private func voiceModeTextGenerationEngine(

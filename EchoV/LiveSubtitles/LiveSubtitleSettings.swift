@@ -85,7 +85,7 @@ enum LiveSubtitleChunkPreset: String, CaseIterable, Identifiable, Sendable {
                 silenceTimeoutSeconds: 0.80,
                 minimumSpeechSeconds: 0.35,
                 preRollSeconds: 0.45,
-                overlapSeconds: 0.12,
+                overlapSeconds: 0.26,
                 sensitivity: .medium
             )
         case .accurate:

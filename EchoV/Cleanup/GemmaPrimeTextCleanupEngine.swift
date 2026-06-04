@@ -5,9 +5,11 @@ struct GemmaPrimeTextCleanupEngine: TextCleanupEngine {
     let displayName = "Gemma Prime Cleanup"
 
     private let textGenerationEngine: any LocalTextGenerationEngine
+    private let ownsTextGenerationEngine: Bool
 
-    init(textGenerationEngine: any LocalTextGenerationEngine) {
+    init(textGenerationEngine: any LocalTextGenerationEngine, ownsTextGenerationEngine: Bool = false) {
         self.textGenerationEngine = textGenerationEngine
+        self.ownsTextGenerationEngine = ownsTextGenerationEngine
     }
 
     func prepare() async throws {
@@ -97,6 +99,10 @@ struct GemmaPrimeTextCleanupEngine: TextCleanupEngine {
     }
 
     func shutdown() async {
+        guard ownsTextGenerationEngine else {
+            return
+        }
+
         await textGenerationEngine.shutdown()
     }
 }

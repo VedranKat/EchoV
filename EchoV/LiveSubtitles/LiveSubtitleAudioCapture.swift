@@ -151,7 +151,7 @@ private func makeLiveSubtitleTapHandler(session: LiveSubtitleCaptureSession) -> 
     }
 }
 
-private final class LiveSubtitleCaptureSession: @unchecked Sendable {
+final class LiveSubtitleCaptureSession: @unchecked Sendable {
     private static let speechTriggerDuration: TimeInterval = 0.14
 
     private let format: AVAudioFormat
@@ -175,6 +175,7 @@ private final class LiveSubtitleCaptureSession: @unchecked Sendable {
     init(
         format: AVAudioFormat,
         configuration: LiveSubtitleChunkConfiguration,
+        startedAt: Date = Date(),
         onChunkReady: @escaping @MainActor (LiveSubtitleAudioChunk) -> Void,
         onError: @escaping @MainActor (AppError) -> Void
     ) throws {
@@ -182,7 +183,7 @@ private final class LiveSubtitleCaptureSession: @unchecked Sendable {
         self.configuration = configuration
         self.onChunkReady = onChunkReady
         self.onError = onError
-        try resetCandidate(startedAt: Date())
+        try resetCandidate(startedAt: startedAt)
     }
 
     func process(_ buffer: AVAudioPCMBuffer, receivedAt: Date) {
@@ -301,7 +302,7 @@ private final class LiveSubtitleCaptureSession: @unchecked Sendable {
             try resetCandidate(startedAt: endedAt)
             if continueRecording {
                 try replayRecentAudio(duration: configuration.overlapSeconds, endingAt: endedAt)
-                self.speechStartedAt = candidateStartedAt
+                self.speechStartedAt = self.candidateStartedAt
                 self.lastSpeechAt = endedAt
                 self.aboveThresholdStartedAt = nil
             } else {

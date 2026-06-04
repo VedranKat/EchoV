@@ -1,14 +1,30 @@
 import Foundation
 import Observation
 
+struct LiveSubtitleLineID: Hashable, Sendable {
+    let chunkID: UUID
+    let unitIndex: Int
+}
+
+struct VisibleLiveSubtitleLine: Identifiable, Equatable {
+    let id: LiveSubtitleLineID
+    let chunkID: UUID
+    var text: String
+    var isFinal: Bool
+    var receivedAt: Date
+}
+
 @MainActor
 @Observable
 final class LiveSubtitleStore {
+    private static let maximumVisibleSubtitleLines = 3
+
     var isRunning = false
     var statusTitle = "Live Subtitles"
     var statusDetail = "Off"
     var currentText = ""
     var previousText = ""
+    var visibleLines: [VisibleLiveSubtitleLine] = []
     var currentChunkID: UUID?
     var isCurrentTextFinal = false
     var isPostProcessing = false
@@ -21,8 +37,7 @@ final class LiveSubtitleStore {
     @ObservationIgnored private var observers: [UUID: () -> Void] = [:]
 
     var hasVisibleSubtitle: Bool {
-        !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !previousText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !visibleLines.isEmpty
     }
 
     @discardableResult
@@ -89,6 +104,7 @@ final class LiveSubtitleStore {
     func showSubtitle(
         _ text: String,
         chunkID: UUID,
+        lineID: LiveSubtitleLineID? = nil,
         isFinal: Bool,
         receivedAt: Date = Date()
     ) {
@@ -96,17 +112,44 @@ final class LiveSubtitleStore {
         guard !trimmed.isEmpty else {
             return
         }
+        let resolvedLineID = lineID ?? LiveSubtitleLineID(chunkID: chunkID, unitIndex: 0)
+
+        if let existingIndex = visibleLines.firstIndex(where: { $0.id == resolvedLineID }),
+           visibleLines[existingIndex].isFinal,
+           !isFinal {
+            return
+        }
+
+        if isFinal {
+            visibleLines.removeAll {
+                $0.chunkID == chunkID && !$0.isFinal && $0.id != resolvedLineID
+            }
+        }
 
         if currentChunkID == chunkID {
             currentText = trimmed
         } else {
-            if !currentText.isEmpty {
-                previousText = currentText
-            }
+            previousText = ""
             currentChunkID = chunkID
             currentText = trimmed
         }
 
+        if let existingIndex = visibleLines.firstIndex(where: { $0.id == resolvedLineID }) {
+            visibleLines[existingIndex].text = trimmed
+            visibleLines[existingIndex].isFinal = isFinal
+            visibleLines[existingIndex].receivedAt = receivedAt
+        } else {
+            visibleLines.append(
+                VisibleLiveSubtitleLine(
+                    id: resolvedLineID,
+                    chunkID: chunkID,
+                    text: trimmed,
+                    isFinal: isFinal,
+                    receivedAt: receivedAt
+                )
+            )
+        }
+        trimVisibleLines()
         isCurrentTextFinal = isFinal
         lastUpdatedAt = receivedAt
         lastError = nil
@@ -116,9 +159,17 @@ final class LiveSubtitleStore {
     func clearSubtitles() {
         previousText = ""
         currentText = ""
+        visibleLines.removeAll()
         currentChunkID = nil
         isCurrentTextFinal = false
         notifyChanged()
+    }
+
+    private func trimVisibleLines() {
+        let overflow = visibleLines.count - Self.maximumVisibleSubtitleLines
+        if overflow > 0 {
+            visibleLines.removeFirst(overflow)
+        }
     }
 
     private func notifyChanged() {
