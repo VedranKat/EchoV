@@ -1,5 +1,10 @@
 import Foundation
 
+struct VoiceModeAssistantTurnResult: Sendable {
+    let responseText: String
+    let delivery: VoiceModeResponseDelivery
+}
+
 @MainActor
 final class VoiceModeController {
     private static let wakePhraseSilenceTimeout: TimeInterval = 0.6
@@ -13,7 +18,10 @@ final class VoiceModeController {
     private let noSpeechTimeoutSeconds: @MainActor () -> TimeInterval
     private let speechVoiceIdentifier: @MainActor () -> String
     private let speechSpeed: @MainActor () -> Double
-    private let onTextResponse: @MainActor (_ userText: String, _ responseText: String) -> Void
+    private var onAssistantSessionRequest: @MainActor (
+        _ command: VoiceModeActivationCommand,
+        _ userText: String
+    ) async throws -> VoiceModeAssistantTurnResult
     private var selectedTextProvider: @MainActor () async -> String?
     private var promptPreview: @MainActor (
         _ command: VoiceModeActivationCommand,
@@ -24,7 +32,6 @@ final class VoiceModeController {
     private var verifyCommandSpeaker: @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool
     private var verifyRequestSpeaker: @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool
     private var onCleanUpSelection: @MainActor () async -> Bool
-    private var onContinueTextResponse: @MainActor (_ userText: String) async -> Bool
     private var onStopped: @MainActor () -> Void
     private let onStateChanged: @MainActor () -> Void
 
@@ -46,7 +53,12 @@ final class VoiceModeController {
         noSpeechTimeoutSeconds: @escaping @MainActor () -> TimeInterval,
         speechVoiceIdentifier: @escaping @MainActor () -> String,
         speechSpeed: @escaping @MainActor () -> Double,
-        onTextResponse: @escaping @MainActor (_ userText: String, _ responseText: String) -> Void,
+        onAssistantSessionRequest: @escaping @MainActor (
+            _ command: VoiceModeActivationCommand,
+            _ userText: String
+        ) async throws -> VoiceModeAssistantTurnResult = { _, _ in
+            throw AppError.voiceModeResponseNotConfigured
+        },
         selectedTextProvider: @escaping @MainActor () async -> String? = { nil },
         promptPreview: @escaping @MainActor (
             _ command: VoiceModeActivationCommand,
@@ -57,7 +69,6 @@ final class VoiceModeController {
         verifyCommandSpeaker: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool = { _ in true },
         verifyRequestSpeaker: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool = { _ in true },
         onCleanUpSelection: @escaping @MainActor () async -> Bool = { false },
-        onContinueTextResponse: @escaping @MainActor (_ userText: String) async -> Bool = { _ in false },
         onStopped: @escaping @MainActor () -> Void,
         onStateChanged: @escaping @MainActor () -> Void
     ) {
@@ -70,14 +81,13 @@ final class VoiceModeController {
         self.noSpeechTimeoutSeconds = noSpeechTimeoutSeconds
         self.speechVoiceIdentifier = speechVoiceIdentifier
         self.speechSpeed = speechSpeed
-        self.onTextResponse = onTextResponse
+        self.onAssistantSessionRequest = onAssistantSessionRequest
         self.selectedTextProvider = selectedTextProvider
         self.promptPreview = promptPreview
         self.responseBackendValidationError = responseBackendValidationError
         self.verifyCommandSpeaker = verifyCommandSpeaker
         self.verifyRequestSpeaker = verifyRequestSpeaker
         self.onCleanUpSelection = onCleanUpSelection
-        self.onContinueTextResponse = onContinueTextResponse
         self.onStopped = onStopped
         self.onStateChanged = onStateChanged
     }
@@ -90,8 +100,13 @@ final class VoiceModeController {
         self.onStopped = onStopped
     }
 
-    func setOnContinueTextResponse(_ onContinueTextResponse: @escaping @MainActor (_ userText: String) async -> Bool) {
-        self.onContinueTextResponse = onContinueTextResponse
+    func setOnAssistantSessionRequest(
+        _ onAssistantSessionRequest: @escaping @MainActor (
+            _ command: VoiceModeActivationCommand,
+            _ userText: String
+        ) async throws -> VoiceModeAssistantTurnResult
+    ) {
+        self.onAssistantSessionRequest = onAssistantSessionRequest
     }
 
     func setOnCleanUpSelection(_ onCleanUpSelection: @escaping @MainActor () async -> Bool) {
@@ -169,7 +184,7 @@ final class VoiceModeController {
         appState.lastError = nil
         setState(
             .voiceModeWakeListening,
-            detail: detail ?? "Assistant is listening for Computer, Computer text, Continue, or Computer cleanup."
+            detail: detail ?? "Assistant is listening for Computer, Computer text, Continue, Computer new, or Computer cleanup."
         )
 
         do {
@@ -420,34 +435,9 @@ final class VoiceModeController {
                 throw validationError
             }
 
-            let delivery = command.delivery
-            let request: ChatGenerationRequest
-            switch delivery {
-            case .spoken:
-                request = VoiceModePrompt(userText: userText)
-                    .chatPrompt
-                    .chatGenerationRequest(policy: .finalAnswerOnly)
-            case .textResponse:
-                if command == .continueTextResponse {
-                    setState(.voiceModeThinking, detail: "Continuing latest text response session...")
-                    guard await onContinueTextResponse(userText) else {
-                        setState(.cancelled, detail: "No text response session is available to continue.")
-                        await startWakeListening()
-                        return
-                    }
-
-                    setState(.completed(Transcript(text: userText, segments: [])), detail: "Text response session continued.")
-                    await startWakeListening()
-                    return
-                }
-
-                request = TextResponseSessionPrompt(messages: [
-                    TextResponseMessage(role: .user, text: userText)
-                ]).chatGenerationRequest(policy: .finalAnswerOnly)
-            }
-
-            let generatedResponse = try await textGenerationEngine.generate(request: request)
-            let response = generatedResponse.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let result = try await onAssistantSessionRequest(command, userText)
+            let delivery = result.delivery
+            let response = result.responseText.trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard isEnabled, isCurrentRun(runID) else {
                 return
@@ -472,7 +462,7 @@ final class VoiceModeController {
                     }
                 )
             case .textResponse:
-                onTextResponse(userText, response)
+                break
             }
 
             guard isEnabled, isCurrentRun(runID) else {
@@ -564,7 +554,7 @@ final class VoiceModeController {
     }
 
     private func selectedTextContext(for command: VoiceModeActivationCommand) async -> String? {
-        guard command == .textResponse else {
+        guard command != .cleanUpSelection else {
             return nil
         }
 

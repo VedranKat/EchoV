@@ -12,10 +12,51 @@ final class TextResponseSessionTests: XCTestCase {
         )
 
         XCTAssertEqual(store.selectedSessionID, sessionID)
+        XCTAssertEqual(store.activeSessionID, sessionID)
         XCTAssertEqual(store.sessions.count, 1)
+        XCTAssertEqual(store.selectedSession?.kind, .text)
         XCTAssertEqual(store.selectedSession?.title, "Explain notification summaries")
         XCTAssertEqual(store.messages(for: sessionID).map(\.role), [.user, .assistant])
         XCTAssertFalse(store.isGenerating(sessionID: sessionID))
+    }
+
+    @MainActor
+    func testStartsEmptyVoiceSessionAndMarksItActive() {
+        let store = TextResponseSessionStore()
+
+        let sessionID = store.startSession(kind: .voice, titleSeed: "  Summarize this selection  ")
+
+        XCTAssertEqual(store.selectedSessionID, sessionID)
+        XCTAssertEqual(store.activeSessionID, sessionID)
+        XCTAssertEqual(store.selectedSession?.kind, .voice)
+        XCTAssertEqual(store.selectedSession?.title, "Summarize this selection")
+        XCTAssertEqual(store.messages(for: sessionID), [])
+    }
+
+    @MainActor
+    func testSelectingOlderSessionMakesItActive() {
+        let store = TextResponseSessionStore()
+        let firstID = store.startSession(userText: "First", responseText: "One")
+        let secondID = store.startSession(userText: "Second", responseText: "Two")
+
+        XCTAssertEqual(store.activeSessionID, secondID)
+
+        store.select(firstID)
+
+        XCTAssertEqual(store.selectedSessionID, firstID)
+        XCTAssertEqual(store.activeSessionID, firstID)
+    }
+
+    @MainActor
+    func testAppendingUserMessageMarksSessionActive() {
+        let store = TextResponseSessionStore()
+        let firstID = store.startSession(userText: "First", responseText: "One")
+        let secondID = store.startSession(userText: "Second", responseText: "Two")
+
+        store.appendUserMessage(sessionID: firstID, text: "Back to the first thread")
+
+        XCTAssertEqual(store.activeSessionID, firstID)
+        XCTAssertEqual(store.selectedSessionID, secondID)
     }
 
     @MainActor
@@ -99,5 +140,19 @@ final class TextResponseSessionTests: XCTestCase {
 
         XCTAssertEqual(request.policy, .chat(stream: true, showReasoning: true))
         XCTAssertFalse(request.messages[0].content.contains("Do not include hidden reasoning"))
+    }
+
+    func testVoiceSessionPromptUsesVoiceFirstSettings() {
+        let prompt = TextResponseSessionPrompt(
+            messages: [
+                TextResponseMessage(role: .user, text: "Summarize this")
+            ],
+            sessionKind: .voice
+        ).chatPrompt
+
+        XCTAssertTrue(prompt.system.contains("voice-first assistant"))
+        XCTAssertTrue(prompt.system.contains("copied webpage"))
+        XCTAssertEqual(prompt.maxTokens, 700)
+        XCTAssertEqual(prompt.temperature, 0.35)
     }
 }

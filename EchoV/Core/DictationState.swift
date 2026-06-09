@@ -29,7 +29,7 @@ enum DictationState: Equatable {
         case .voiceGateRecording:
             "Recording speech..."
         case .voiceModeWakeListening:
-            "Listening for Computer, Computer text, Continue, or Computer cleanup..."
+            "Listening for Computer, Computer text, Continue, Computer new, or Computer cleanup..."
         case .voiceModeCheckingWakePhrase:
             "Checking activation phrase..."
         case .voiceModePromptListening:

@@ -5,6 +5,7 @@ enum VoiceModeActivationCommand: Equatable, Sendable {
     case textResponse
     case continueTextResponse
     case cleanUpSelection
+    case newSession
 
     var phrase: String {
         switch self {
@@ -16,6 +17,8 @@ enum VoiceModeActivationCommand: Equatable, Sendable {
             return "continue"
         case .cleanUpSelection:
             return "computer cleanup"
+        case .newSession:
+            return "computer new"
         }
     }
 
@@ -23,14 +26,14 @@ enum VoiceModeActivationCommand: Equatable, Sendable {
         switch self {
         case .cleanUpSelection:
             return "Computer Cleanup"
-        case .spoken, .textResponse, .continueTextResponse:
+        case .spoken, .textResponse, .continueTextResponse, .newSession:
             return phrase.capitalized
         }
     }
 
     var delivery: VoiceModeResponseDelivery {
         switch self {
-        case .spoken:
+        case .spoken, .newSession:
             return .spoken
         case .textResponse, .continueTextResponse, .cleanUpSelection:
             return .textResponse
@@ -44,6 +47,7 @@ enum WakePhraseMatcher {
     static let continueTextResponseActivationPhrase = "continue"
     static let cleanUpSelectionActivationPhrase = ["computer", "cleanup"]
     static let cleanUpSelectionSplitActivationPhrase = ["computer", "clean", "up"]
+    static let newSessionActivationPhrase = ["computer", "new"]
 
     static func activationCommand(for text: String) -> VoiceModeActivationCommand? {
         switch normalizedTokens(in: text) {
@@ -56,6 +60,8 @@ enum WakePhraseMatcher {
         case cleanUpSelectionActivationPhrase,
              cleanUpSelectionSplitActivationPhrase:
             return .cleanUpSelection
+        case newSessionActivationPhrase:
+            return .newSession
         default:
             return nil
         }

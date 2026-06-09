@@ -46,7 +46,7 @@ struct VoiceGuardSettingsView: View {
                         SettingsRow(
                             icon: "text.magnifyingglass",
                             title: "Protect Assistant commands",
-                            subtitle: "Verify Computer, Computer text, Continue, and Computer cleanup before acting."
+                            subtitle: "Verify Computer, Computer text, Continue, Computer new, and Computer cleanup before acting."
                         ) {
                             Toggle("", isOn: Bindable(container.settings).isVoiceGuardEnabledForVoiceModeCommands)
                                 .labelsHidden()

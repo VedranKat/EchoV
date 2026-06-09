@@ -139,7 +139,7 @@ final class AppContainer {
     private var recordingTrigger: RecordingTrigger?
     private var isVoiceGateArmed = false
     private var voiceProfileEnrollmentRecording: RecordedAudio?
-    private var textResponseGenerationTasks: [UUID: Task<Void, Never>] = [:]
+    private var textResponseGenerationTasks: [UUID: Task<String?, Never>] = [:]
     private var promptPreviewContinuation: CheckedContinuation<String?, Never>?
     var isVoiceProfileEnrollmentRecording = false
     var isVoiceProfileEnrollmentProcessing = false
@@ -273,14 +273,6 @@ final class AppContainer {
             noSpeechTimeoutSeconds: { settings.voiceModeNoSpeechTimeoutSeconds },
             speechVoiceIdentifier: { settings.voiceModeKokoroVoiceIdentifier },
             speechSpeed: { settings.voiceModeKokoroSpeed },
-            onTextResponse: { userText, responseText in
-                let sessionID = textResponseSessions.startSession(userText: userText, responseText: responseText)
-                textResponseSessionNotifier.sessionCreated(
-                    id: sessionID,
-                    title: textResponseSessions.selectedSession?.title ?? "Text response",
-                    responseText: responseText
-                )
-            },
             onStopped: {},
             onStateChanged: { appState.notifyStatusChanged() }
         )
@@ -328,8 +320,12 @@ final class AppContainer {
             container.recordingTrigger = nil
             container.settings.isLiveSubtitlesEnabled = false
         }
-        voiceModeController.setOnContinueTextResponse { [weak container] userText in
-            await container?.continueLatestTextResponseSession(userText: userText) ?? false
+        voiceModeController.setOnAssistantSessionRequest { [weak container] command, userText in
+            guard let container else {
+                throw AppError.voiceModeResponseFailed(details: "Assistant session storage is unavailable.")
+            }
+
+            return try await container.performVoiceModeAssistantTurn(command: command, userText: userText)
         }
         voiceModeController.setOnCleanUpSelection { [weak container] in
             await container?.cleanUpSelectedText() ?? false
@@ -1050,82 +1046,123 @@ final class AppContainer {
         resolveVoiceModePromptPreview(id: request.id, promptText: nil)
     }
 
-    func continueLatestTextResponseSession(userText: String) async -> Bool {
-        guard let sessionID = textResponseSessions.sessions.first?.id else {
-            appState.lastDetail = "No text response session is available to continue."
-            appState.notifyStatusChanged()
-            return false
-        }
-
-        guard !textResponseSessions.isGenerating(sessionID: sessionID) else {
-            appState.lastDetail = "The latest text response session is still generating."
-            appState.notifyStatusChanged()
-            return false
-        }
-
-        textResponseSessions.select(sessionID)
-        await continueTextResponseSession(sessionID: sessionID, userText: userText)
-        return true
-    }
-
-    func continueTextResponseSession(sessionID: UUID, userText: String) async {
+    func performVoiceModeAssistantTurn(
+        command: VoiceModeActivationCommand,
+        userText: String
+    ) async throws -> VoiceModeAssistantTurnResult {
         let trimmedText = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
-            return
+            throw AppError.voiceModeResponseFailed(details: "Assistant request was empty.")
+        }
+
+        switch command {
+        case .spoken:
+            let sessionID = activeSessionID(kind: .voice)
+                ?? textResponseSessions.startSession(kind: .voice, titleSeed: trimmedText)
+            let response = try await performAssistantSessionTurn(
+                sessionID: sessionID,
+                userText: trimmedText,
+                policy: .finalAnswerOnly
+            )
+            return VoiceModeAssistantTurnResult(responseText: response.content, delivery: .spoken)
+
+        case .newSession:
+            let sessionID = textResponseSessions.startSession(kind: .voice, titleSeed: trimmedText)
+            let response = try await performAssistantSessionTurn(
+                sessionID: sessionID,
+                userText: trimmedText,
+                policy: .finalAnswerOnly
+            )
+            return VoiceModeAssistantTurnResult(responseText: response.content, delivery: .spoken)
+
+        case .textResponse:
+            let existingSessionID = activeSessionID(kind: .text)
+            let sessionID = existingSessionID
+                ?? textResponseSessions.startSession(kind: .text, titleSeed: trimmedText)
+            let response = try await performAssistantSessionTurn(
+                sessionID: sessionID,
+                userText: trimmedText,
+                policy: .finalAnswerOnly
+            )
+            if existingSessionID == nil {
+                notifyTextResponseSessionCreated(sessionID: sessionID, responseText: response.content)
+            }
+            return VoiceModeAssistantTurnResult(responseText: response.content, delivery: .textResponse)
+
+        case .continueTextResponse:
+            let sessionID = textResponseSessions.activeSessionID
+                ?? textResponseSessions.startSession(kind: .voice, titleSeed: trimmedText)
+            let kind = textResponseSessions.kind(for: sessionID) ?? .voice
+            let policy: ChatGenerationPolicy = kind == .text
+                ? .chat(stream: settings.textResponseStreamsReplies, showReasoning: settings.textResponseShowsReasoning)
+                : .finalAnswerOnly
+            let response = try await performAssistantSessionTurn(
+                sessionID: sessionID,
+                userText: trimmedText,
+                policy: policy
+            )
+            let delivery: VoiceModeResponseDelivery = kind == .voice ? .spoken : .textResponse
+            return VoiceModeAssistantTurnResult(responseText: response.content, delivery: delivery)
+
+        case .cleanUpSelection:
+            throw AppError.voiceModeResponseFailed(details: "Computer cleanup does not generate an assistant response.")
+        }
+    }
+
+    @discardableResult
+    func continueTextResponseSession(sessionID: UUID, userText: String) async -> String? {
+        let trimmedText = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            return nil
         }
 
         guard !textResponseSessions.isGenerating(sessionID: sessionID) else {
-            return
+            return nil
         }
 
         if let validationError = voiceModeResponseBackendValidationError() {
             appState.lastError = validationError
             appState.lastDetail = validationError.userMessage
             appState.notifyStatusChanged()
-            return
+            return nil
         }
 
-        let task = Task { @MainActor [weak self] in
+        textResponseSessions.select(sessionID)
+
+        let task = Task<String?, Never> { @MainActor [weak self] in
             guard let self else {
-                return
+                return nil
             }
 
-            await self.performContinueTextResponseSession(sessionID: sessionID, trimmedText: trimmedText)
+            return await self.performContinueTextResponseSession(sessionID: sessionID, trimmedText: trimmedText)
         }
         textResponseGenerationTasks[sessionID] = task
-        await task.value
+        let response = await task.value
         textResponseGenerationTasks[sessionID] = nil
+        return response
     }
 
-    private func performContinueTextResponseSession(sessionID: UUID, trimmedText: String) async {
-        textResponseSessions.appendUserMessage(sessionID: sessionID, text: trimmedText)
-        let messages = textResponseSessions.messages(for: sessionID)
+    private func activeSessionID(kind: TextResponseSessionKind) -> UUID? {
+        guard let session = textResponseSessions.activeSession, session.kind == kind else {
+            return nil
+        }
+
+        return session.id
+    }
+
+    private func performContinueTextResponseSession(sessionID: UUID, trimmedText: String) async -> String? {
         let policy = ChatGenerationPolicy.chat(
             stream: settings.textResponseStreamsReplies,
             showReasoning: settings.textResponseShowsReasoning
         )
-        let request = TextResponseSessionPrompt(messages: messages).chatGenerationRequest(policy: policy)
 
         do {
-            if request.prefersStreaming {
-                try await continueTextResponseSessionStreaming(
-                    sessionID: sessionID,
-                    request: request
-                )
-                return
-            }
-
-            let response = try await currentVoiceModeTextGenerationEngine().generate(request: request)
-            let trimmedResponse = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedResponse.isEmpty else {
-                throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty chat response.")
-            }
-
-            textResponseSessions.appendAssistantMessage(
+            let response = try await performAssistantSessionTurn(
                 sessionID: sessionID,
-                text: trimmedResponse,
-                reasoning: settings.textResponseShowsReasoning ? response.reasoning : ""
+                userText: trimmedText,
+                policy: policy
             )
+            return response.content
         } catch let error as AppError {
             textResponseSessions.setError(error.userMessage, sessionID: sessionID)
             appState.lastError = error
@@ -1141,12 +1178,80 @@ final class AppContainer {
             appState.lastDetail = "Text response failed."
             appState.notifyStatusChanged()
         }
+
+        return nil
+    }
+
+    private func performAssistantSessionTurn(
+        sessionID: UUID,
+        userText: String,
+        policy: ChatGenerationPolicy
+    ) async throws -> ChatGenerationResult {
+        guard !textResponseSessions.isGenerating(sessionID: sessionID) else {
+            throw AppError.voiceModeResponseFailed(details: "The active assistant session is still generating.")
+        }
+
+        if let validationError = voiceModeResponseBackendValidationError() {
+            throw validationError
+        }
+
+        textResponseSessions.appendUserMessage(sessionID: sessionID, text: userText)
+        let messages = textResponseSessions.messages(for: sessionID)
+        let kind = textResponseSessions.kind(for: sessionID) ?? .text
+        let request = TextResponseSessionPrompt(
+            messages: messages,
+            sessionKind: kind
+        ).chatGenerationRequest(policy: policy)
+
+        do {
+            if request.prefersStreaming {
+                return try await continueTextResponseSessionStreaming(
+                    sessionID: sessionID,
+                    request: request
+                )
+            }
+
+            let response = try await currentVoiceModeTextGenerationEngine().generate(request: request)
+            let trimmedResponse = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedResponse.isEmpty else {
+                throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty assistant response.")
+            }
+
+            let finalResponse = ChatGenerationResult(
+                content: trimmedResponse,
+                reasoning: settings.textResponseShowsReasoning ? response.reasoning : ""
+            )
+            textResponseSessions.appendAssistantMessage(
+                sessionID: sessionID,
+                text: finalResponse.content,
+                reasoning: kind == .text ? finalResponse.reasoning : ""
+            )
+            return finalResponse
+        } catch let error as AppError {
+            textResponseSessions.setError(error.userMessage, sessionID: sessionID)
+            throw error
+        } catch is CancellationError {
+            textResponseSessions.setError("Generation stopped.", sessionID: sessionID)
+            throw CancellationError()
+        } catch {
+            textResponseSessions.setError(error.localizedDescription, sessionID: sessionID)
+            throw error
+        }
+    }
+
+    private func notifyTextResponseSessionCreated(sessionID: UUID, responseText: String) {
+        let title = textResponseSessions.sessions.first { $0.id == sessionID }?.title ?? "Text response"
+        textResponseSessionNotifier.sessionCreated(
+            id: sessionID,
+            title: title,
+            responseText: responseText
+        )
     }
 
     private func continueTextResponseSessionStreaming(
         sessionID: UUID,
         request: ChatGenerationRequest
-    ) async throws {
+    ) async throws -> ChatGenerationResult {
         guard let messageID = textResponseSessions.startAssistantStreamingMessage(sessionID: sessionID) else {
             throw AppError.voiceModeResponseFailed(details: "Could not start a streaming chat response.")
         }
@@ -1178,6 +1283,10 @@ final class AppContainer {
                 messageID: messageID,
                 finalContent: trimmedResponse,
                 finalReasoning: settings.textResponseShowsReasoning ? response.reasoning : ""
+            )
+            return ChatGenerationResult(
+                content: trimmedResponse,
+                reasoning: settings.textResponseShowsReasoning ? response.reasoning : ""
             )
         } catch let error as AppError {
             textResponseSessions.failAssistantStreamingMessage(

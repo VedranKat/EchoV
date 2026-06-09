@@ -16,7 +16,7 @@ final class VoiceModePromptComposerTests: XCTestCase {
                 selectedText: "  First paragraph.\nSecond paragraph.  "
             ),
             """
-            Background text:
+            Selected text:
             First paragraph.
             Second paragraph.
 
@@ -30,9 +30,18 @@ final class VoiceModePromptComposerTests: XCTestCase {
         XCTAssertEqual(
             VoiceModePromptComposer.compose(userPrompt: "   ", selectedText: "  Clean me  "),
             """
-            Background text:
+            Selected text:
             Clean me
             """
         )
+    }
+
+    func testTruncatesVeryLargeSelectionWithNotice() {
+        let selection = String(repeating: "a", count: 24_100)
+        let composed = VoiceModePromptComposer.compose(userPrompt: "summarize", selectedText: selection)
+
+        XCTAssertTrue(composed.hasPrefix("Selected text:\n"))
+        XCTAssertTrue(composed.contains("[Selected text truncated by EchoV because it was too long.]"))
+        XCTAssertTrue(composed.contains("\n\nWhat I want:\nsummarize"))
     }
 }

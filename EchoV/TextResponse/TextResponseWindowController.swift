@@ -10,8 +10,10 @@ final class TextResponseWindowController {
         self.container = container
     }
 
-    func show(sessionID: UUID) {
-        container.textResponseSessions.select(sessionID)
+    func show(sessionID: UUID? = nil) {
+        if let sessionID {
+            container.textResponseSessions.select(sessionID)
+        }
 
         if window == nil {
             window = makeWindow()
@@ -35,7 +37,7 @@ final class TextResponseWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "EchoV Text Response"
+        window.title = "EchoV Chats"
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         window.minSize = NSSize(width: 760, height: 520)

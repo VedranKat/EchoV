@@ -17,7 +17,7 @@ struct TextResponseSessionView: View {
                 if let session = container.textResponseSessions.selectedSession {
                     chatView(for: session)
                 } else {
-                    ContentUnavailableView("No text responses", systemImage: "text.bubble")
+                    ContentUnavailableView("No chats", systemImage: "bubble.left.and.bubble.right")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -33,7 +33,7 @@ struct TextResponseSessionView: View {
     private var sessionSidebar: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Text Responses")
+                Text("Chats")
                     .font(.headline)
                     .lineLimit(1)
 
@@ -53,11 +53,11 @@ struct TextResponseSessionView: View {
 
             if container.textResponseSessions.sessions.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "text.bubble")
+                    Image(systemName: "bubble.left.and.bubble.right")
                         .font(.system(size: 24, weight: .semibold))
                         .foregroundStyle(.secondary)
 
-                    Text("No sessions")
+                    Text("No chats")
                         .font(.callout.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
@@ -72,6 +72,13 @@ struct TextResponseSessionView: View {
                                 .fixedSize(horizontal: false, vertical: true)
 
                             HStack(spacing: 6) {
+                                Text(session.kind.displayName)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(SettingsTheme.controlFill(for: colorScheme), in: Capsule())
+
                                 Image(systemName: session.isGenerating ? "sparkles" : "clock")
                                     .font(.caption2)
 
@@ -95,9 +102,18 @@ struct TextResponseSessionView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.title)
-                        .font(.headline)
-                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        Text(session.title)
+                            .font(.headline)
+                            .lineLimit(1)
+
+                        Text(session.kind.displayName)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(SettingsTheme.controlFill(for: colorScheme), in: Capsule())
+                    }
 
                     Text(session.updatedAt.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
@@ -254,6 +270,17 @@ private enum TextResponseScrollTarget: Hashable {
     case message(UUID)
     case thinking
     case error
+}
+
+private extension TextResponseSessionKind {
+    var displayName: String {
+        switch self {
+        case .text:
+            return "Text"
+        case .voice:
+            return "Voice"
+        }
+    }
 }
 
 private struct TextResponseMessageBubble: View {

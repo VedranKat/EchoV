@@ -8,7 +8,7 @@ struct VoiceModeSettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
                     title: "Assistant",
-                    subtitle: "Say Computer for spoken answers, Computer text for text-response sessions, Continue to follow up, or Computer cleanup for selected text."
+                    subtitle: "Say Computer for spoken answers, Computer text for text sessions, Continue to follow up, Computer new to start fresh, or Computer cleanup for selected text."
                 )
 
                 SettingsCard("Activation", subtitle: "Keep Assistant explicit and local.") {
@@ -33,13 +33,14 @@ struct VoiceModeSettingsView: View {
                         SettingsRow(
                             icon: "text.quote",
                             title: "Voice commands",
-                            subtitle: "Computer speaks, Computer text starts text, Continue appends, Computer cleanup rewrites selected text with Prime."
+                            subtitle: "Computer speaks, Computer text starts text, Continue appends to the active session, Computer new starts fresh, and Computer cleanup rewrites selected text with Prime."
                         ) {
                             ViewThatFits(in: .horizontal) {
                                 HStack(spacing: 8) {
                                     StatusBadge(text: "Computer", tone: .active)
                                     StatusBadge(text: "Computer text", tone: .success)
                                     StatusBadge(text: "Continue", tone: .neutral)
+                                    StatusBadge(text: "Computer new", tone: .neutral)
                                     StatusBadge(text: "Computer cleanup", tone: .warning)
                                 }
 
@@ -50,6 +51,7 @@ struct VoiceModeSettingsView: View {
                                     }
                                     HStack(spacing: 8) {
                                         StatusBadge(text: "Continue", tone: .neutral)
+                                        StatusBadge(text: "Computer new", tone: .neutral)
                                         StatusBadge(text: "Computer cleanup", tone: .warning)
                                     }
                                 }
@@ -284,7 +286,7 @@ struct VoiceModeSettingsView: View {
 
     private var voiceModeSubtitle: String {
         if container.settings.isVoiceModeEnabled {
-            return "Listening for Computer, Computer text, Continue, or Computer cleanup while EchoV is running."
+            return "Listening for Computer, Computer text, Continue, Computer new, or Computer cleanup while EchoV is running."
         }
 
         return "Assistant starts only when this is enabled."

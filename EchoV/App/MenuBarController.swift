@@ -5,12 +5,12 @@ import SwiftUI
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let container: AppContainer
-    private let openTextResponseSession: (UUID) -> Void
+    private let openTextResponseSession: (UUID?) -> Void
     private lazy var settingsWindowController = SettingsWindowController(container: container)
 
     init(
         container: AppContainer,
-        openTextResponseSession: @escaping (UUID) -> Void
+        openTextResponseSession: @escaping (UUID?) -> Void
     ) {
         self.container = container
         self.openTextResponseSession = openTextResponseSession
@@ -77,17 +77,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private func addTextResponseItems(to menu: NSMenu) {
         let sessions = container.textResponseSessions.sessions
-        guard let latestSession = sessions.first else {
-            return
-        }
-
         let item = NSMenuItem(
-            title: "Open Text Chat",
+            title: "Open Chat",
             action: #selector(openTextResponseSessionFromMenu(_:)),
             keyEquivalent: ""
         )
         item.target = self
-        item.representedObject = latestSession.id.uuidString
+        item.representedObject = sessions.first?.id.uuidString
         menu.addItem(item)
         menu.addItem(NSMenuItem.separator())
     }
@@ -119,14 +115,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openTextResponseSessionFromMenu(_ sender: NSMenuItem) {
-        guard
-            let rawID = sender.representedObject as? String,
-            let sessionID = UUID(uuidString: rawID)
-        else {
+        guard let rawID = sender.representedObject as? String else {
+            openTextResponseSession(nil)
             return
         }
 
-        openTextResponseSession(sessionID)
+        openTextResponseSession(UUID(uuidString: rawID))
     }
 
     private func makeMenuBarImage() -> NSImage {
