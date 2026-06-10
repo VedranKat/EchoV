@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import EchoV
 
@@ -154,5 +155,66 @@ final class TextResponseSessionTests: XCTestCase {
         XCTAssertTrue(prompt.system.contains("copied webpage"))
         XCTAssertEqual(prompt.maxTokens, 700)
         XCTAssertEqual(prompt.temperature, 0.35)
+    }
+
+    @MainActor
+    func testTextResponseClipboardCopiesMessageText() {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("EchoV.TextResponseClipboardTests.\(UUID().uuidString)"))
+
+        TextResponseClipboard.copy("Copy this answer", pasteboard: pasteboard)
+
+        XCTAssertEqual(pasteboard.string(forType: .string), "Copy this answer")
+    }
+
+    func testTextResponseTranscriptFormatterCopiesWholeChat() {
+        let session = TextResponseSession(
+            id: UUID(),
+            kind: .text,
+            title: "Session",
+            createdAt: Date(),
+            updatedAt: Date(),
+            messages: [
+                TextResponseMessage(role: .user, text: "First question"),
+                TextResponseMessage(role: .assistant, text: "First answer", reasoning: "Hidden notes"),
+                TextResponseMessage(role: .user, text: "Follow-up")
+            ],
+            isGenerating: false,
+            lastError: "Network hiccup"
+        )
+
+        XCTAssertEqual(
+            TextResponseTranscriptFormatter.transcript(for: session),
+            """
+            You:
+            First question
+
+            EchoV thinking:
+            Hidden notes
+
+            EchoV:
+            First answer
+
+            You:
+            Follow-up
+
+            Error:
+            Network hiccup
+            """
+        )
+    }
+
+    func testTextResponseTranscriptFormatterReturnsNilForEmptyChat() {
+        let session = TextResponseSession(
+            id: UUID(),
+            kind: .text,
+            title: "Empty",
+            createdAt: Date(),
+            updatedAt: Date(),
+            messages: [],
+            isGenerating: false,
+            lastError: nil
+        )
+
+        XCTAssertNil(TextResponseTranscriptFormatter.transcript(for: session))
     }
 }

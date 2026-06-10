@@ -122,35 +122,7 @@ struct VoiceModeSettingsView: View {
 
                         DividerLine()
 
-                        SettingsRow(
-                            icon: "arrow.triangle.branch",
-                            title: "Response backend",
-                            subtitle: container.settings.voiceModeResponseBackend.subtitle
-                        ) {
-                            HStack(spacing: 10) {
-                                Picker(
-                                    "",
-                                    selection: Binding(
-                                        get: { container.settings.voiceModeResponseBackend },
-                                        set: { container.setVoiceModeResponseBackend($0) }
-                                    )
-                                ) {
-                                    ForEach(VoiceModeResponseBackend.allCases) { backend in
-                                        Text(backend.title).tag(backend)
-                                    }
-                                }
-                                .labelsHidden()
-                                .pickerStyle(.segmented)
-                                .frame(width: 320)
-
-                                let backend = container.voiceModeBackendIndicator()
-                                VoiceModeBackendIndicator(
-                                    title: backend.title,
-                                    subtitle: backend.subtitle,
-                                    isCloud: backend.isCloud
-                                )
-                            }
-                        }
+                        ResponseBackendSelectionView()
                     }
                 }
 
@@ -467,6 +439,97 @@ struct VoiceModeSettingsView: View {
             ?? "The selected Kokoro voice is not currently available."
     }
 
+}
+
+private struct ResponseBackendSelectionView: View {
+    @Environment(AppContainer.self) private var container
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Response backend")
+                        .font(.body)
+
+                    Text(container.settings.voiceModeResponseBackend.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Picker(
+                    "",
+                    selection: Binding(
+                        get: { container.settings.voiceModeResponseBackend },
+                        set: { container.setVoiceModeResponseBackend($0) }
+                    )
+                ) {
+                    ForEach(VoiceModeResponseBackend.allCases) { backend in
+                        Text(backend.title).tag(backend)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 360)
+
+                let backend = container.voiceModeBackendIndicator()
+                ResponseBackendStatusPanel(
+                    title: backend.title,
+                    subtitle: backend.subtitle,
+                    isCloud: backend.isCloud
+                )
+                .frame(width: 360, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minHeight: 36)
+    }
+}
+
+private struct ResponseBackendStatusPanel: View {
+    let title: String
+    let subtitle: String
+    let isCloud: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: isCloud ? "cloud" : "desktopcomputer")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(statusColor)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusColor)
+                    .lineLimit(1)
+
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(statusColor.opacity(colorScheme == .light ? 0.12 : 0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var statusColor: Color {
+        isCloud ? .orange : .green
+    }
 }
 
 private struct CloudContextWindowTextField: View {

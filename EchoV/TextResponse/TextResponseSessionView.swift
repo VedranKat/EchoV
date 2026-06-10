@@ -133,15 +133,9 @@ struct TextResponseSessionView: View {
                     isCloud: backend.isCloud
                 )
 
-                Button {
-                    copyLatestAssistantMessage(from: session)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.borderless)
-                .disabled(latestAssistantMessage(in: session) == nil)
-                .help("Copy latest response")
+                TextResponseChatCopyButton(
+                    transcript: TextResponseTranscriptFormatter.transcript(for: session)
+                )
             }
             .padding(.horizontal, 20)
             .frame(height: 58)
@@ -249,21 +243,6 @@ struct TextResponseSessionView: View {
         }
     }
 
-    private func copyLatestAssistantMessage(from session: TextResponseSession) {
-        guard let text = latestAssistantMessage(in: session)?.text else {
-            return
-        }
-
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-    }
-
-    private func latestAssistantMessage(in session: TextResponseSession) -> TextResponseMessage? {
-        session.messages.last { message in
-            message.role == .assistant
-        }
-    }
 }
 
 private enum TextResponseScrollTarget: Hashable {
@@ -294,9 +273,7 @@ private struct TextResponseMessageBubble: View {
             }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 5) {
-                Text(message.role == .user ? "You" : "EchoV")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                messageHeader
 
                 if !message.reasoning.isEmpty {
                     DisclosureGroup {
@@ -330,6 +307,41 @@ private struct TextResponseMessageBubble: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var copyableText: String? {
+        message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : message.text
+    }
+
+    private var copyActionTitle: String {
+        switch message.role {
+        case .user:
+            "Copy message"
+        case .assistant:
+            "Copy response"
+        }
+    }
+
+    private var messageHeader: some View {
+        HStack(spacing: 6) {
+            if message.role == .user, let copyableText {
+                TextResponseMessageCopyButton(
+                    text: copyableText,
+                    title: copyActionTitle
+                )
+            }
+
+            Text(message.role == .user ? "You" : "EchoV")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if message.role == .assistant, let copyableText {
+                TextResponseMessageCopyButton(
+                    text: copyableText,
+                    title: copyActionTitle
+                )
+            }
+        }
+    }
+
     @ViewBuilder
     private func messageContent(_ text: String) -> some View {
         if message.role == .user {
@@ -341,6 +353,9 @@ private struct TextResponseMessageBubble: View {
                 .padding(.vertical, 10)
                 .foregroundStyle(.white)
                 .background(background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contextMenu {
+                    copyContextMenu()
+                }
         } else {
             MarkdownMessageView(content: text)
                 .padding(.horizontal, 13)
@@ -350,6 +365,20 @@ private struct TextResponseMessageBubble: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .strokeBorder(.separator.opacity(SettingsTheme.separatorOpacity(for: colorScheme)))
                 }
+                .contextMenu {
+                    copyContextMenu()
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func copyContextMenu() -> some View {
+        if let copyableText {
+            Button {
+                TextResponseClipboard.copy(copyableText)
+            } label: {
+                Label(copyActionTitle.capitalized, systemImage: "doc.on.doc")
+            }
         }
     }
 
@@ -360,6 +389,123 @@ private struct TextResponseMessageBubble: View {
         case .assistant:
             colorScheme == .light ? .white : Color(nsColor: .controlBackgroundColor)
         }
+    }
+}
+
+private struct TextResponseMessageCopyButton: View {
+    let text: String
+    let title: String
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovering = false
+    @State private var didCopy = false
+
+    var body: some View {
+        Button {
+            TextResponseClipboard.copy(text)
+            didCopy = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(1_200))
+                didCopy = false
+            }
+        } label: {
+            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(didCopy ? .green : .secondary)
+        .background(buttonBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .help(didCopy ? "Copied" : title)
+        .onHover { isHovering = $0 }
+    }
+
+    private var buttonBackground: Color {
+        guard isHovering || didCopy else {
+            return .clear
+        }
+
+        return SettingsTheme.controlFill(for: colorScheme)
+    }
+}
+
+enum TextResponseClipboard {
+    static func copy(_ text: String, pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+}
+
+enum TextResponseTranscriptFormatter {
+    static func transcript(for session: TextResponseSession) -> String? {
+        var sections: [String] = []
+        for message in session.messages {
+            let trimmedText = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedReasoning = message.reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !trimmedReasoning.isEmpty {
+                sections.append("EchoV thinking:\n\(trimmedReasoning)")
+            }
+
+            guard !trimmedText.isEmpty else {
+                continue
+            }
+
+            switch message.role {
+            case .user:
+                sections.append("You:\n\(message.text)")
+            case .assistant:
+                sections.append("EchoV:\n\(message.text)")
+            }
+        }
+
+        if let lastError = session.lastError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !lastError.isEmpty
+        {
+            sections.append("Error:\n\(lastError)")
+        }
+
+        let transcript = sections.joined(separator: "\n\n")
+        return transcript.isEmpty ? nil : transcript
+    }
+}
+
+private struct TextResponseChatCopyButton: View {
+    let transcript: String?
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var didCopy = false
+
+    var body: some View {
+        Button {
+            guard let transcript else {
+                return
+            }
+
+            TextResponseClipboard.copy(transcript)
+            didCopy = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(1_200))
+                didCopy = false
+            }
+        } label: {
+            Label(didCopy ? "Copied" : "Copy", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                .font(.caption.weight(.semibold))
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(didCopy ? .green : .primary)
+        .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(.separator.opacity(SettingsTheme.separatorOpacity(for: colorScheme)))
+        }
+        .disabled(transcript == nil)
+        .opacity(transcript == nil ? 0.55 : 1)
+        .help(didCopy ? "Copied chat" : "Copy chat")
     }
 }
 
