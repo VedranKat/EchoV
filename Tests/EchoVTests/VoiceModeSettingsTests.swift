@@ -25,6 +25,7 @@ final class VoiceModeSettingsTests: XCTestCase {
         XCTAssertFalse(settings.textResponseShowsReasoning)
         XCTAssertEqual(settings.voiceModeCloudBaseURL, "")
         XCTAssertEqual(settings.voiceModeCloudModel, "")
+        XCTAssertNil(settings.voiceModeCloudContextWindowTokens)
         XCTAssertEqual(settings.voiceModeKokoroVoiceIdentifier, KokoroVoiceCatalog.defaultVoiceID)
         XCTAssertEqual(settings.voiceModeKokoroSpeed, 1.0)
     }
@@ -96,6 +97,7 @@ final class VoiceModeSettingsTests: XCTestCase {
         defaults.set(true, forKey: "settings.textResponseShowsReasoning")
         defaults.set("https://api.example.com/v1", forKey: "settings.voiceModeCloudBaseURL")
         defaults.set("example-model", forKey: "settings.voiceModeCloudModel")
+        defaults.set(128_000, forKey: "settings.voiceModeCloudContextWindowTokens")
 
         let settings = AppSettings(userDefaults: defaults)
 
@@ -106,6 +108,29 @@ final class VoiceModeSettingsTests: XCTestCase {
         XCTAssertTrue(settings.textResponseShowsReasoning)
         XCTAssertEqual(settings.voiceModeCloudBaseURL, "https://api.example.com/v1")
         XCTAssertEqual(settings.voiceModeCloudModel, "example-model")
+        XCTAssertEqual(settings.voiceModeCloudContextWindowTokens, 128_000)
+    }
+
+    func testVoiceModeCloudContextWindowIsClamped() {
+        let defaults = isolatedUserDefaults()
+        defaults.set(100, forKey: "settings.voiceModeCloudContextWindowTokens")
+
+        let settings = AppSettings(userDefaults: defaults)
+        XCTAssertEqual(settings.voiceModeCloudContextWindowTokens, AppSettings.cloudContextWindowTokenRange.lowerBound)
+
+        settings.voiceModeCloudContextWindowTokens = 9_000_000
+        XCTAssertEqual(settings.voiceModeCloudContextWindowTokens, AppSettings.cloudContextWindowTokenRange.upperBound)
+    }
+
+    func testVoiceModeCloudContextWindowCanBeCleared() {
+        let defaults = isolatedUserDefaults()
+        defaults.set(128_000, forKey: "settings.voiceModeCloudContextWindowTokens")
+
+        let settings = AppSettings(userDefaults: defaults)
+        settings.voiceModeCloudContextWindowTokens = nil
+
+        XCTAssertNil(settings.voiceModeCloudContextWindowTokens)
+        XCTAssertNil(defaults.object(forKey: "settings.voiceModeCloudContextWindowTokens"))
     }
 
     func testVoiceGuardDefaultsToOffWithAllTargetsSelected() {

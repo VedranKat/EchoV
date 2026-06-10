@@ -4,6 +4,9 @@ import Observation
 @MainActor
 @Observable
 final class AppSettings {
+    static let suggestedCloudContextWindowTokens = 32_000
+    static let cloudContextWindowTokenRange = 4_096...2_000_000
+
     private let userDefaults: UserDefaults
 
     var toggleHotkey: HotkeyBinding? {
@@ -369,6 +372,23 @@ final class AppSettings {
         }
     }
 
+    var voiceModeCloudContextWindowTokens: Int? {
+        didSet {
+            guard let tokens = voiceModeCloudContextWindowTokens else {
+                userDefaults.removeObject(forKey: Keys.voiceModeCloudContextWindowTokens)
+                return
+            }
+
+            let clamped = Self.clampedCloudContextWindowTokens(tokens)
+            guard clamped == tokens else {
+                voiceModeCloudContextWindowTokens = clamped
+                return
+            }
+
+            userDefaults.set(tokens, forKey: Keys.voiceModeCloudContextWindowTokens)
+        }
+    }
+
     var voiceModeCloudAPIKey: String {
         didSet {
             VoiceModeCloudAPIKeyStore.save(voiceModeCloudAPIKey)
@@ -596,6 +616,11 @@ final class AppSettings {
         self.textResponseShowsReasoning = userDefaults.object(forKey: Keys.textResponseShowsReasoning) as? Bool ?? false
         self.voiceModeCloudBaseURL = userDefaults.string(forKey: Keys.voiceModeCloudBaseURL) ?? ""
         self.voiceModeCloudModel = userDefaults.string(forKey: Keys.voiceModeCloudModel) ?? ""
+        self.voiceModeCloudContextWindowTokens = Self.loadOptionalClampedInt(
+            from: userDefaults,
+            key: Keys.voiceModeCloudContextWindowTokens,
+            range: Self.cloudContextWindowTokenRange
+        )
         self.voiceModeCloudAPIKey = VoiceModeCloudAPIKeyStore.load()
         self.voiceModeKokoroVoiceIdentifier = userDefaults.string(forKey: Keys.voiceModeKokoroVoiceIdentifier)
             ?? KokoroVoiceCatalog.defaultVoiceID
@@ -852,6 +877,22 @@ final class AppSettings {
         return min(max(userDefaults.integer(forKey: key), range.lowerBound), range.upperBound)
     }
 
+    private static func loadOptionalClampedInt(
+        from userDefaults: UserDefaults,
+        key: String,
+        range: ClosedRange<Int>
+    ) -> Int? {
+        guard userDefaults.object(forKey: key) != nil else {
+            return nil
+        }
+
+        return min(max(userDefaults.integer(forKey: key), range.lowerBound), range.upperBound)
+    }
+
+    private static func clampedCloudContextWindowTokens(_ value: Int) -> Int {
+        min(max(value, cloudContextWindowTokenRange.lowerBound), cloudContextWindowTokenRange.upperBound)
+    }
+
     private func applyProxyEnvironment() {
         ProxyEnvironment.apply(proxySettings)
     }
@@ -916,6 +957,7 @@ private enum Keys {
     static let textResponseShowsReasoning = "settings.textResponseShowsReasoning"
     static let voiceModeCloudBaseURL = "settings.voiceModeCloudBaseURL"
     static let voiceModeCloudModel = "settings.voiceModeCloudModel"
+    static let voiceModeCloudContextWindowTokens = "settings.voiceModeCloudContextWindowTokens"
     static let voiceModeKokoroVoiceIdentifier = "settings.voiceModeKokoroVoiceIdentifier"
     static let voiceModeKokoroSpeed = "settings.voiceModeKokoroSpeed"
     static let isProxyEnabled = "settings.isProxyEnabled"

@@ -188,6 +188,16 @@ struct VoiceModeSettingsView: View {
                             DividerLine()
 
                             SettingsRow(
+                                icon: "text.word.spacing",
+                                title: "Context window",
+                                subtitle: "Required. Set this to the provider model's context length in tokens."
+                            ) {
+                                CloudContextWindowTextField()
+                            }
+
+                            DividerLine()
+
+                            SettingsRow(
                                 icon: "key",
                                 title: "API key",
                                 subtitle: "Stored in the macOS Keychain."
@@ -457,6 +467,58 @@ struct VoiceModeSettingsView: View {
             ?? "The selected Kokoro voice is not currently available."
     }
 
+}
+
+private struct CloudContextWindowTextField: View {
+    @Environment(AppContainer.self) private var container
+    @State private var text = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField("\(AppSettings.suggestedCloudContextWindowTokens)", text: $text)
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .frame(width: 140)
+            .focused($isFocused)
+            .onAppear(perform: syncFromSettings)
+            .onSubmit(commitText)
+            .onChange(of: isFocused) { _, isFocused in
+                if isFocused {
+                    syncFromSettings()
+                } else {
+                    commitText()
+                }
+            }
+            .onChange(of: container.settings.voiceModeCloudContextWindowTokens) { _, _ in
+                guard !isFocused else {
+                    return
+                }
+
+                syncFromSettings()
+            }
+    }
+
+    private func syncFromSettings() {
+        text = container.settings.voiceModeCloudContextWindowTokens.map(String.init) ?? ""
+    }
+
+    private func commitText() {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            container.settings.voiceModeCloudContextWindowTokens = nil
+            text = ""
+            return
+        }
+
+        let digits = trimmedText.filter(\.isNumber)
+        guard let tokens = Int(digits) else {
+            syncFromSettings()
+            return
+        }
+
+        container.settings.voiceModeCloudContextWindowTokens = tokens
+        syncFromSettings()
+    }
 }
 
 private struct StopPhraseInfoButton: View {

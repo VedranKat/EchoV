@@ -5,6 +5,8 @@ import Observation
 @Observable
 final class AppContainer {
     private static let liveSubtitlePrimeIdleShutdownDelaySeconds: TimeInterval = 120
+    private static let localAssistantContextWindowTokens = 4_096
+    private static let voiceAssistantMaximumRecentMessages = 10
 
     private enum HotkeyID {
         static let toggle = UInt32(1)
@@ -975,6 +977,7 @@ final class AppContainer {
         let baseURL = settings.voiceModeCloudBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let model = settings.voiceModeCloudModel.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = settings.voiceModeCloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let contextWindowTokens = settings.voiceModeCloudContextWindowTokens
 
         guard
             !baseURL.isEmpty,
@@ -986,7 +989,12 @@ final class AppContainer {
             return .voiceModeResponseNotConfigured
         }
 
-        guard !model.isEmpty, !apiKey.isEmpty else {
+        guard
+            !model.isEmpty,
+            !apiKey.isEmpty,
+            let contextWindowTokens,
+            AppSettings.cloudContextWindowTokenRange.contains(contextWindowTokens)
+        else {
             return .voiceModeResponseNotConfigured
         }
 
@@ -1202,16 +1210,20 @@ final class AppContainer {
             messages: messages,
             sessionKind: kind
         ).chatGenerationRequest(policy: policy)
+        let budgetedRequest = AssistantContextWindow.reduce(
+            request,
+            configuration: assistantContextWindowConfiguration(for: kind, request: request)
+        )
 
         do {
-            if request.prefersStreaming {
+            if budgetedRequest.prefersStreaming {
                 return try await continueTextResponseSessionStreaming(
                     sessionID: sessionID,
-                    request: request
+                    request: budgetedRequest
                 )
             }
 
-            let response = try await currentVoiceModeTextGenerationEngine().generate(request: request)
+            let response = try await currentVoiceModeTextGenerationEngine().generate(request: budgetedRequest)
             let trimmedResponse = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedResponse.isEmpty else {
                 throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty assistant response.")
@@ -1246,6 +1258,26 @@ final class AppContainer {
             title: title,
             responseText: responseText
         )
+    }
+
+    private func assistantContextWindowConfiguration(
+        for kind: TextResponseSessionKind,
+        request: ChatGenerationRequest
+    ) -> AssistantContextWindowConfiguration {
+        AssistantContextWindowConfiguration(
+            contextWindowTokens: assistantContextWindowTokens(),
+            responseReserveTokens: request.maxTokens,
+            maximumRecentMessages: kind == .voice ? Self.voiceAssistantMaximumRecentMessages : nil
+        )
+    }
+
+    private func assistantContextWindowTokens() -> Int {
+        switch settings.voiceModeResponseBackend {
+        case .localLlama:
+            return Self.localAssistantContextWindowTokens
+        case .openAICompatibleCloud:
+            return settings.voiceModeCloudContextWindowTokens ?? AppSettings.cloudContextWindowTokenRange.lowerBound
+        }
     }
 
     private func continueTextResponseSessionStreaming(
