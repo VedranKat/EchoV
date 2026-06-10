@@ -5,7 +5,8 @@ struct TextResponseSessionView: View {
     @Environment(AppContainer.self) private var container
     @Environment(\.colorScheme) private var colorScheme
     @State private var draft = ""
-    @FocusState private var isComposerFocused: Bool
+    @State private var isComposerFocused = false
+    @State private var composerHeight = TextResponseComposerMetrics.minimumHeight
 
     var body: some View {
         HStack(spacing: 0) {
@@ -182,22 +183,36 @@ struct TextResponseSessionView: View {
 
             Divider()
 
-            HStack(spacing: 10) {
-                TextField("Reply", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...4)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
+            HStack(alignment: .bottom, spacing: 10) {
+                ZStack(alignment: .topLeading) {
+                    TextResponseComposerTextView(
+                        text: $draft,
+                        measuredHeight: $composerHeight,
+                        isFocused: $isComposerFocused,
+                        isDisabled: session.isGenerating,
+                        onSubmit: {
+                            sendReply(sessionID: session.id, isGenerating: session.isGenerating)
+                        }
+                    )
+                    .frame(height: composerHeight)
+
+                    if draft.isEmpty {
+                        Text("Reply")
+                            .font(.body)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .allowsHitTesting(false)
+                    }
+                }
+                    .frame(minHeight: TextResponseComposerMetrics.minimumHeight)
                     .background(SettingsTheme.controlFill(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .strokeBorder(.separator.opacity(SettingsTheme.separatorOpacity(for: colorScheme)))
                     }
-                    .disabled(session.isGenerating)
-                    .focused($isComposerFocused)
-                    .onSubmit {
-                        sendReply(sessionID: session.id, isGenerating: session.isGenerating)
-                    }
+                    .opacity(session.isGenerating ? 0.72 : 1)
+                    .help("Press Command-Return to send.")
 
                 Button {
                     sendReply(sessionID: session.id, isGenerating: session.isGenerating)
@@ -243,6 +258,197 @@ struct TextResponseSessionView: View {
         }
     }
 
+}
+
+private enum TextResponseComposerMetrics {
+    static let minimumHeight: CGFloat = 42
+    static let maximumHeight: CGFloat = 168
+}
+
+private struct TextResponseComposerTextView: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var measuredHeight: CGFloat
+    @Binding var isFocused: Bool
+
+    let isDisabled: Bool
+    let onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> TextResponseComposerScrollView {
+        let scrollView = TextResponseComposerScrollView()
+        scrollView.textView.delegate = context.coordinator
+        scrollView.textView.onCommandReturn = {
+            context.coordinator.submit()
+        }
+        scrollView.onHeightChanged = { height in
+            context.coordinator.updateHeight(height)
+        }
+        context.coordinator.scrollView = scrollView
+        context.coordinator.apply(parent: self, to: scrollView)
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: TextResponseComposerScrollView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.scrollView = scrollView
+        context.coordinator.apply(parent: self, to: scrollView)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: TextResponseComposerTextView
+        weak var scrollView: TextResponseComposerScrollView?
+
+        init(parent: TextResponseComposerTextView) {
+            self.parent = parent
+        }
+
+        func apply(parent: TextResponseComposerTextView, to scrollView: TextResponseComposerScrollView) {
+            let textView = scrollView.textView
+            textView.isEditable = !parent.isDisabled
+            textView.isSelectable = !parent.isDisabled
+            textView.textColor = parent.isDisabled ? .secondaryLabelColor : .labelColor
+
+            if textView.string != parent.text {
+                textView.string = parent.text
+            }
+
+            scrollView.recalculateHeight()
+
+            if parent.isFocused, !parent.isDisabled, textView.window?.firstResponder !== textView {
+                DispatchQueue.main.async { [weak textView] in
+                    guard let textView else { return }
+                    textView.window?.makeFirstResponder(textView)
+                }
+            }
+        }
+
+        func submit() {
+            parent.onSubmit()
+        }
+
+        func updateHeight(_ height: CGFloat) {
+            guard abs(parent.measuredHeight - height) > 0.5 else {
+                return
+            }
+            parent.measuredHeight = height
+        }
+
+        func textDidBeginEditing(_ notification: Notification) {
+            parent.isFocused = true
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            parent.isFocused = false
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else {
+                return
+            }
+
+            parent.text = textView.string
+            scrollView?.recalculateHeight()
+        }
+    }
+}
+
+private final class TextResponseComposerScrollView: NSScrollView {
+    let textView = TextResponseComposerNSTextView()
+    var onHeightChanged: ((CGFloat) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configure()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configure()
+    }
+
+    override func layout() {
+        super.layout()
+        recalculateHeight()
+    }
+
+    func recalculateHeight() {
+        updateTextContainerWidth()
+        guard let textContainer = textView.textContainer,
+              let layoutManager = textView.layoutManager
+        else {
+            return
+        }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let contentHeight = ceil(usedRect.height + textView.textContainerInset.height * 2)
+        let desiredHeight = min(
+            max(contentHeight, TextResponseComposerMetrics.minimumHeight),
+            TextResponseComposerMetrics.maximumHeight
+        )
+        hasVerticalScroller = contentHeight > TextResponseComposerMetrics.maximumHeight + 0.5
+        onHeightChanged?(desiredHeight)
+
+        let documentHeight = max(contentHeight, contentSize.height)
+        if abs(textView.frame.height - documentHeight) > 0.5 {
+            textView.frame.size.height = documentHeight
+        }
+    }
+
+    private func configure() {
+        drawsBackground = false
+        borderType = .noBorder
+        hasHorizontalScroller = false
+        hasVerticalScroller = false
+        autohidesScrollers = true
+        scrollerStyle = .overlay
+        verticalScrollElasticity = .allowed
+        documentView = textView
+
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .controlAccentColor
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.textContainerInset = NSSize(width: 12, height: 9)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.minSize = NSSize(width: 0, height: TextResponseComposerMetrics.minimumHeight)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+    }
+
+    private func updateTextContainerWidth() {
+        let width = max(contentSize.width, 1)
+        textView.frame.size.width = width
+        textView.textContainer?.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+    }
+}
+
+private final class TextResponseComposerNSTextView: NSTextView {
+    var onCommandReturn: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if isReturn, modifiers.contains(.command) {
+            onCommandReturn?()
+            return
+        }
+
+        super.keyDown(with: event)
+    }
 }
 
 private enum TextResponseScrollTarget: Hashable {
