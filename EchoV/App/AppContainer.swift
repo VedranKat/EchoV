@@ -217,7 +217,8 @@ final class AppContainer {
             appState: appState,
             recorder: AVFoundationAudioRecorder(
                 microphonePermission: microphonePermission,
-                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
+                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID },
+                isAppleVoiceProcessingEnabled: { settings.isDictationAppleVoiceProcessingEnabled }
             ),
             normalizer: AudioNormalizer(),
             asrEngine: UnconfiguredASREngine(),
@@ -257,7 +258,8 @@ final class AppContainer {
             appState: appState,
             capture: VoiceActivatedAudioCapture(
                 microphonePermission: microphonePermission,
-                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
+                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID },
+                isAppleVoiceProcessingEnabled: { settings.isDictationAppleVoiceProcessingEnabled }
             ),
             pipeline: pipeline,
             textGenerationEngine: localTextGenerationEngine,
@@ -297,7 +299,8 @@ final class AppContainer {
             hotkeyService: CarbonHotkeyService(),
             voiceGateCapture: VoiceActivatedAudioCapture(
                 microphonePermission: microphonePermission,
-                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
+                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID },
+                isAppleVoiceProcessingEnabled: { settings.isDictationAppleVoiceProcessingEnabled }
             ),
             voiceModeController: voiceModeController,
             liveSubtitleController: liveSubtitleController,
@@ -306,7 +309,8 @@ final class AppContainer {
             voiceProfileEnrollmentRecorder: AVFoundationAudioRecorder(
                 microphonePermission: microphonePermission,
                 minimumDuration: 3,
-                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID }
+                selectedMicrophoneDeviceID: { settings.selectedMicrophoneDeviceID },
+                isAppleVoiceProcessingEnabled: { settings.isDictationAppleVoiceProcessingEnabled }
             ),
             selectedTextCapture: SelectedTextCaptureService(accessibilityPermission: accessibilityPermission),
             textResponseSessionNotifier: textResponseSessionNotifier,

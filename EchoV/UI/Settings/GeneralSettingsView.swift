@@ -69,6 +69,18 @@ struct GeneralSettingsView: View {
                             }
                         }
 
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "waveform.and.mic",
+                            title: "Apple voice processing",
+                            subtitle: "Use macOS echo cancellation and automatic gain control for microphone capture."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).isDictationAppleVoiceProcessingEnabled)
+                                .labelsHidden()
+                                .help("Applies to dictation, hands-free, voice mode, and new Trusted Voice enrollments.")
+                        }
+
                     }
                 }
 

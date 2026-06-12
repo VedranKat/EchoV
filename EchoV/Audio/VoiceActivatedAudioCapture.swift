@@ -39,16 +39,19 @@ enum VoiceGateCaptureSilenceTimeout: Equatable, Sendable {
 final class VoiceActivatedAudioCapture {
     private let microphonePermission: MicrophonePermissionService
     private let selectedMicrophoneDeviceID: @MainActor @Sendable () -> String?
+    private let isAppleVoiceProcessingEnabled: @MainActor @Sendable () -> Bool
 
     private var engine: AVAudioEngine?
     private var session: VoiceGateCaptureSession?
 
     init(
         microphonePermission: MicrophonePermissionService,
-        selectedMicrophoneDeviceID: @escaping @MainActor @Sendable () -> String? = { nil }
+        selectedMicrophoneDeviceID: @escaping @MainActor @Sendable () -> String? = { nil },
+        isAppleVoiceProcessingEnabled: @escaping @MainActor @Sendable () -> Bool = { false }
     ) {
         self.microphonePermission = microphonePermission
         self.selectedMicrophoneDeviceID = selectedMicrophoneDeviceID
+        self.isAppleVoiceProcessingEnabled = isAppleVoiceProcessingEnabled
     }
 
     func start(
@@ -67,6 +70,14 @@ final class VoiceActivatedAudioCapture {
         let inputNode = engine.inputNode
         if let deviceID = selectedMicrophoneDeviceID(), !deviceID.isEmpty {
             try selectInputDevice(with: deviceID, for: inputNode)
+        }
+
+        let voiceProcessingResult = AudioInputVoiceProcessing.configure(
+            inputNode: inputNode,
+            isEnabled: isAppleVoiceProcessingEnabled()
+        )
+        if case .failed(let message) = voiceProcessingResult {
+            DiagnosticLog.write("appleVoiceProcessing voiceCapture fallback reason=\(message)")
         }
 
         let inputFormat = inputNode.outputFormat(forBus: 0)

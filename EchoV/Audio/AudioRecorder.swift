@@ -29,6 +29,7 @@ actor AVFoundationAudioRecorder: AudioRecorder {
     private let microphonePermission: MicrophonePermissionService
     private let minimumDuration: TimeInterval
     private let selectedMicrophoneDeviceID: @MainActor @Sendable () -> String?
+    private let isAppleVoiceProcessingEnabled: @MainActor @Sendable () -> Bool
     private let writeErrorStore = AudioRecorderWriteErrorStore()
 
     private var recording: RecordedAudio?
@@ -38,11 +39,13 @@ actor AVFoundationAudioRecorder: AudioRecorder {
     init(
         microphonePermission: MicrophonePermissionService,
         minimumDuration: TimeInterval = 0.2,
-        selectedMicrophoneDeviceID: @escaping @MainActor @Sendable () -> String? = { nil }
+        selectedMicrophoneDeviceID: @escaping @MainActor @Sendable () -> String? = { nil },
+        isAppleVoiceProcessingEnabled: @escaping @MainActor @Sendable () -> Bool = { false }
     ) {
         self.microphonePermission = microphonePermission
         self.minimumDuration = minimumDuration
         self.selectedMicrophoneDeviceID = selectedMicrophoneDeviceID
+        self.isAppleVoiceProcessingEnabled = isAppleVoiceProcessingEnabled
     }
 
     func start() async throws -> RecordedAudio {
@@ -56,6 +59,15 @@ actor AVFoundationAudioRecorder: AudioRecorder {
         let inputNode = engine.inputNode
         if let deviceID = await selectedMicrophoneDeviceID(), !deviceID.isEmpty {
             try selectInputDevice(with: deviceID, for: inputNode)
+        }
+
+        let shouldUseAppleVoiceProcessing = await isAppleVoiceProcessingEnabled()
+        let voiceProcessingResult = AudioInputVoiceProcessing.configure(
+            inputNode: inputNode,
+            isEnabled: shouldUseAppleVoiceProcessing
+        )
+        if case .failed(let message) = voiceProcessingResult {
+            DiagnosticLog.write("appleVoiceProcessing recorder fallback reason=\(message)")
         }
 
         let inputFormat = inputNode.outputFormat(forBus: 0)

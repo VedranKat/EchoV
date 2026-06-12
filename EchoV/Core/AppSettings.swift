@@ -85,6 +85,12 @@ final class AppSettings {
         }
     }
 
+    var isDictationAppleVoiceProcessingEnabled: Bool {
+        didSet {
+            userDefaults.set(isDictationAppleVoiceProcessingEnabled, forKey: Keys.isDictationAppleVoiceProcessingEnabled)
+        }
+    }
+
     var selectedLiveSubtitleAudioDeviceID: String? {
         didSet {
             if let selectedLiveSubtitleAudioDeviceID {
@@ -501,6 +507,8 @@ final class AppSettings {
         self.isHistoryEnabled = userDefaults.object(forKey: Keys.isHistoryEnabled) as? Bool ?? true
         self.shouldDeleteTemporaryAudio = userDefaults.object(forKey: Keys.shouldDeleteTemporaryAudio) as? Bool ?? true
         self.selectedMicrophoneDeviceID = userDefaults.string(forKey: Keys.selectedMicrophoneDeviceID)
+        self.isDictationAppleVoiceProcessingEnabled =
+            userDefaults.object(forKey: Keys.isDictationAppleVoiceProcessingEnabled) as? Bool ?? false
         self.selectedLiveSubtitleAudioDeviceID = userDefaults.string(forKey: Keys.selectedLiveSubtitleAudioDeviceID)
         self.isLiveSubtitlesEnabled = userDefaults.object(forKey: Keys.isLiveSubtitlesEnabled) as? Bool ?? false
         self.liveSubtitleMode = Self.loadLiveSubtitleMode(from: userDefaults)
@@ -911,6 +919,7 @@ private enum Keys {
     static let isHistoryEnabled = "settings.isHistoryEnabled"
     static let shouldDeleteTemporaryAudio = "settings.shouldDeleteTemporaryAudio"
     static let selectedMicrophoneDeviceID = "settings.selectedMicrophoneDeviceID"
+    static let isDictationAppleVoiceProcessingEnabled = "settings.isDictationAppleVoiceProcessingEnabled"
     static let selectedLiveSubtitleAudioDeviceID = "settings.selectedLiveSubtitleAudioDeviceID"
     static let isLiveSubtitlesEnabled = "settings.isLiveSubtitlesEnabled"
     static let liveSubtitleMode = "settings.liveSubtitleMode"
