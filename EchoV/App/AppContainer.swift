@@ -132,6 +132,7 @@ final class AppContainer {
     private let voiceProfileEnrollmentRecorder: any AudioRecorder
     private let selectedTextCapture: SelectedTextCaptureService
     private let textResponseSessionNotifier: TextResponseSessionNotifier
+    private let assistantConfirmationSounds: AssistantConfirmationSoundService
     private var localTextGenerationEngine: any LocalTextGenerationEngine
     private var localTextGenerationEngineKey: LocalTextGenerationEngineKey?
     private var liveSubtitleTextGenerationEngineKey: LocalTextGenerationEngineKey?
@@ -170,6 +171,7 @@ final class AppContainer {
         voiceProfileEnrollmentRecorder: any AudioRecorder,
         selectedTextCapture: SelectedTextCaptureService,
         textResponseSessionNotifier: TextResponseSessionNotifier,
+        assistantConfirmationSounds: AssistantConfirmationSoundService,
         localTextGenerationEngine: any LocalTextGenerationEngine
     ) {
         self.appState = appState
@@ -195,6 +197,7 @@ final class AppContainer {
         self.voiceProfileEnrollmentRecorder = voiceProfileEnrollmentRecorder
         self.selectedTextCapture = selectedTextCapture
         self.textResponseSessionNotifier = textResponseSessionNotifier
+        self.assistantConfirmationSounds = assistantConfirmationSounds
         self.localTextGenerationEngine = localTextGenerationEngine
     }
 
@@ -211,6 +214,7 @@ final class AppContainer {
         let licensesStore = LicensesStore()
         let textResponseSessions = TextResponseSessionStore()
         let textResponseSessionNotifier = TextResponseSessionNotifier()
+        let assistantConfirmationSounds = AssistantConfirmationSoundService()
         let liveSubtitles = LiveSubtitleStore()
 
         let pipeline = DictationPipeline(
@@ -314,6 +318,7 @@ final class AppContainer {
             ),
             selectedTextCapture: SelectedTextCaptureService(accessibilityPermission: accessibilityPermission),
             textResponseSessionNotifier: textResponseSessionNotifier,
+            assistantConfirmationSounds: assistantConfirmationSounds,
             localTextGenerationEngine: localTextGenerationEngine
         )
         voiceModeController.setOnStopped { [weak container] in
@@ -345,6 +350,9 @@ final class AppContainer {
                 promptText: promptText,
                 includesSelectionContext: includesSelectionContext
             )
+        }
+        voiceModeController.setConfirmationCuePlayer { [weak container] command in
+            await container?.playAssistantConfirmationCue(for: command)
         }
         voiceModeController.setResponseBackendValidationError { [weak container] in
             container?.voiceModeResponseBackendValidationError()
@@ -900,6 +908,28 @@ final class AppContainer {
         voiceModeController.availableSpeechVoices
     }
 
+    func previewAssistantConfirmationSound() async {
+        await assistantConfirmationSounds.play(
+            .voiceReady,
+            style: settings.assistantConfirmationSoundStyle
+        )
+    }
+
+    private func playAssistantConfirmationCue(for command: VoiceModeActivationCommand) async {
+        guard settings.isAssistantConfirmationSoundEnabled else {
+            return
+        }
+
+        let cue = AssistantConfirmationCue.cue(
+            for: command,
+            activeSessionKind: textResponseSessions.activeSession?.kind
+        )
+        await assistantConfirmationSounds.play(
+            cue,
+            style: settings.assistantConfirmationSoundStyle
+        )
+    }
+
     func captureSelectedText() async -> String? {
         await selectedTextCapture.captureSelectedText()
     }
@@ -1010,7 +1040,7 @@ final class AppContainer {
         promptText: String,
         includesSelectionContext: Bool
     ) async -> String? {
-        guard settings.isVoiceModePromptPreviewEnabled else {
+        guard isVoiceModePromptPreviewEnabledForCurrentBackend else {
             return promptText
         }
 
@@ -1033,6 +1063,15 @@ final class AppContainer {
 
         return await withCheckedContinuation { continuation in
             promptPreviewContinuation = continuation
+        }
+    }
+
+    private var isVoiceModePromptPreviewEnabledForCurrentBackend: Bool {
+        switch settings.voiceModeResponseBackend {
+        case .localLlama:
+            return settings.isLocalVoiceModePromptPreviewEnabled
+        case .openAICompatibleCloud:
+            return settings.isCloudVoiceModePromptPreviewEnabled
         }
     }
 
@@ -1078,7 +1117,7 @@ final class AppContainer {
             )
             return VoiceModeAssistantTurnResult(responseText: response.content, delivery: .spoken)
 
-        case .newSession:
+        case .refreshSession:
             let sessionID = textResponseSessions.startSession(kind: .voice, titleSeed: trimmedText)
             let response = try await performAssistantSessionTurn(
                 sessionID: sessionID,
@@ -1088,17 +1127,13 @@ final class AppContainer {
             return VoiceModeAssistantTurnResult(responseText: response.content, delivery: .spoken)
 
         case .textResponse:
-            let existingSessionID = activeSessionID(kind: .text)
-            let sessionID = existingSessionID
-                ?? textResponseSessions.startSession(kind: .text, titleSeed: trimmedText)
+            let sessionID = textResponseSessions.startSession(kind: .text, titleSeed: trimmedText)
             let response = try await performAssistantSessionTurn(
                 sessionID: sessionID,
                 userText: trimmedText,
                 policy: .finalAnswerOnly
             )
-            if existingSessionID == nil {
-                notifyTextResponseSessionCreated(sessionID: sessionID, responseText: response.content)
-            }
+            notifyTextResponseSessionCreated(sessionID: sessionID, responseText: response.content)
             return VoiceModeAssistantTurnResult(responseText: response.content, delivery: .textResponse)
 
         case .continueTextResponse:

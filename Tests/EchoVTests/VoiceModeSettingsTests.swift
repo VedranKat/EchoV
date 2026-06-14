@@ -19,8 +19,11 @@ final class VoiceModeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.voiceModeStopPhrase, "go ahead")
         XCTAssertEqual(settings.voiceModeNoSpeechTimeoutSeconds, 8.0)
         XCTAssertEqual(settings.voiceModeResponseBackend, .localLlama)
-        XCTAssertTrue(settings.isVoiceModePromptPreviewEnabled)
+        XCTAssertTrue(settings.isLocalVoiceModePromptPreviewEnabled)
+        XCTAssertTrue(settings.isCloudVoiceModePromptPreviewEnabled)
         XCTAssertTrue(settings.isVoiceModeHUDEnabled)
+        XCTAssertTrue(settings.isAssistantConfirmationSoundEnabled)
+        XCTAssertEqual(settings.assistantConfirmationSoundStyle, .starship)
         XCTAssertTrue(settings.textResponseStreamsReplies)
         XCTAssertFalse(settings.textResponseShowsReasoning)
         XCTAssertEqual(settings.voiceModeCloudBaseURL, "")
@@ -91,8 +94,11 @@ final class VoiceModeSettingsTests: XCTestCase {
     func testVoiceModeLoadsCloudResponseProviderFields() {
         let defaults = isolatedUserDefaults()
         defaults.set(VoiceModeResponseBackend.openAICompatibleCloud.rawValue, forKey: "settings.voiceModeResponseBackend")
-        defaults.set(false, forKey: "settings.isVoiceModePromptPreviewEnabled")
+        defaults.set(false, forKey: "settings.isLocalVoiceModePromptPreviewEnabled")
+        defaults.set(true, forKey: "settings.isCloudVoiceModePromptPreviewEnabled")
         defaults.set(false, forKey: "settings.isVoiceModeHUDEnabled")
+        defaults.set(false, forKey: "settings.isAssistantConfirmationSoundEnabled")
+        defaults.set(AssistantConfirmationSoundStyle.terminal.rawValue, forKey: "settings.assistantConfirmationSoundStyle")
         defaults.set(false, forKey: "settings.textResponseStreamsReplies")
         defaults.set(true, forKey: "settings.textResponseShowsReasoning")
         defaults.set("https://api.example.com/v1", forKey: "settings.voiceModeCloudBaseURL")
@@ -102,13 +108,26 @@ final class VoiceModeSettingsTests: XCTestCase {
         let settings = AppSettings(userDefaults: defaults)
 
         XCTAssertEqual(settings.voiceModeResponseBackend, .openAICompatibleCloud)
-        XCTAssertFalse(settings.isVoiceModePromptPreviewEnabled)
+        XCTAssertFalse(settings.isLocalVoiceModePromptPreviewEnabled)
+        XCTAssertTrue(settings.isCloudVoiceModePromptPreviewEnabled)
         XCTAssertFalse(settings.isVoiceModeHUDEnabled)
+        XCTAssertFalse(settings.isAssistantConfirmationSoundEnabled)
+        XCTAssertEqual(settings.assistantConfirmationSoundStyle, .terminal)
         XCTAssertFalse(settings.textResponseStreamsReplies)
         XCTAssertTrue(settings.textResponseShowsReasoning)
         XCTAssertEqual(settings.voiceModeCloudBaseURL, "https://api.example.com/v1")
         XCTAssertEqual(settings.voiceModeCloudModel, "example-model")
         XCTAssertEqual(settings.voiceModeCloudContextWindowTokens, 128_000)
+    }
+
+    func testVoiceModePromptPreviewMigratesLegacySingleSettingWithoutDisablingCloudDefault() {
+        let defaults = isolatedUserDefaults()
+        defaults.set(false, forKey: "settings.isVoiceModePromptPreviewEnabled")
+
+        let settings = AppSettings(userDefaults: defaults)
+
+        XCTAssertFalse(settings.isLocalVoiceModePromptPreviewEnabled)
+        XCTAssertTrue(settings.isCloudVoiceModePromptPreviewEnabled)
     }
 
     func testVoiceModeCloudContextWindowIsClamped() {

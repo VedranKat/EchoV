@@ -8,7 +8,7 @@ struct VoiceModeSettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(
                     title: "Assistant",
-                    subtitle: "Say Computer for spoken answers, Computer text for text sessions, Continue to follow up, Computer new to start fresh, or Computer cleanup for selected text."
+                    subtitle: "Say Computer for voice, Computer text for fresh text, Continue to follow up, Computer refresh for fresh voice, or Computer cleanup for selected text."
                 )
 
                 SettingsCard("Activation", subtitle: "Keep Assistant explicit and local.") {
@@ -33,25 +33,27 @@ struct VoiceModeSettingsView: View {
                         SettingsRow(
                             icon: "text.quote",
                             title: "Voice commands",
-                            subtitle: "Computer speaks, Computer text starts text, Continue appends to the active session, Computer new starts fresh, and Computer cleanup rewrites selected text with Prime."
+                            subtitle: "Computer continues voice, Computer text starts fresh text, Continue follows up, and Computer refresh starts fresh voice."
                         ) {
                             ViewThatFits(in: .horizontal) {
                                 HStack(spacing: 8) {
                                     StatusBadge(text: "Computer", tone: .active)
+                                    StatusBadge(text: "Computer refresh", tone: .neutral)
                                     StatusBadge(text: "Computer text", tone: .success)
                                     StatusBadge(text: "Continue", tone: .neutral)
-                                    StatusBadge(text: "Computer new", tone: .neutral)
                                     StatusBadge(text: "Computer cleanup", tone: .warning)
                                 }
 
                                 VStack(alignment: .trailing, spacing: 6) {
                                     HStack(spacing: 8) {
                                         StatusBadge(text: "Computer", tone: .active)
-                                        StatusBadge(text: "Computer text", tone: .success)
+                                        StatusBadge(text: "Computer refresh", tone: .neutral)
                                     }
                                     HStack(spacing: 8) {
+                                        StatusBadge(text: "Computer text", tone: .success)
                                         StatusBadge(text: "Continue", tone: .neutral)
-                                        StatusBadge(text: "Computer new", tone: .neutral)
+                                    }
+                                    HStack(spacing: 8) {
                                         StatusBadge(text: "Computer cleanup", tone: .warning)
                                     }
                                 }
@@ -97,10 +99,13 @@ struct VoiceModeSettingsView: View {
                         SettingsRow(
                             icon: "rectangle.and.pencil.and.ellipsis",
                             title: "Preview before sending",
-                            subtitle: "Review, edit, or cancel the prompt before the LLM sees it."
+                            subtitle: "Review, edit, or cancel prompts separately for local and cloud responses."
                         ) {
-                            Toggle("", isOn: Bindable(container.settings).isVoiceModePromptPreviewEnabled)
-                                .labelsHidden()
+                            HStack(spacing: 12) {
+                                Toggle("Local", isOn: Bindable(container.settings).isLocalVoiceModePromptPreviewEnabled)
+                                Toggle("Cloud", isOn: Bindable(container.settings).isCloudVoiceModePromptPreviewEnabled)
+                            }
+                            .toggleStyle(.switch)
                         }
 
                         DividerLine()
@@ -118,6 +123,51 @@ struct VoiceModeSettingsView: View {
                                 )
                             )
                             .labelsHidden()
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "speaker.wave.2",
+                            title: "Confirmation sounds",
+                            subtitle: "Play a short cue when an Assistant command is accepted."
+                        ) {
+                            Toggle("", isOn: Bindable(container.settings).isAssistantConfirmationSoundEnabled)
+                                .labelsHidden()
+                        }
+
+                        DividerLine()
+
+                        SettingsRow(
+                            icon: "waveform",
+                            title: "Sound style",
+                            subtitle: container.settings.assistantConfirmationSoundStyle.subtitle
+                        ) {
+                            HStack(spacing: 8) {
+                                Picker(
+                                    "",
+                                    selection: Bindable(container.settings).assistantConfirmationSoundStyle
+                                ) {
+                                    ForEach(AssistantConfirmationSoundStyle.allCases) { style in
+                                        Text(style.title).tag(style)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .frame(width: 170)
+
+                                Button {
+                                    Task {
+                                        await container.previewAssistantConfirmationSound()
+                                    }
+                                } label: {
+                                    Image(systemName: "play.fill")
+                                        .frame(width: 24, height: 24)
+                                }
+                                .buttonStyle(.bordered)
+                                .help("Preview")
+                            }
+                            .disabled(!container.settings.isAssistantConfirmationSoundEnabled)
                         }
 
                         DividerLine()
@@ -185,7 +235,7 @@ struct VoiceModeSettingsView: View {
                     }
                 }
 
-                SettingsCard("Text Response", subtitle: "Computer text notifications stay final-only; chat follow-ups can stream.") {
+                SettingsCard("Text Response", subtitle: "Computer text starts fresh; chat follow-ups can stream.") {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "dot.radiowaves.left.and.right",
@@ -268,7 +318,7 @@ struct VoiceModeSettingsView: View {
 
     private var voiceModeSubtitle: String {
         if container.settings.isVoiceModeEnabled {
-            return "Listening for Computer, Computer text, Continue, Computer new, or Computer cleanup while EchoV is running."
+            return "Listening for Computer, Computer refresh, Computer text, Continue, or Computer cleanup while EchoV is running."
         }
 
         return "Assistant starts only when this is enabled."

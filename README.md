@@ -37,3 +37,17 @@ Open EchoV from the menu bar, grant microphone and accessibility permissions, th
 
 - Toggle dictation: Option + Space
 - Push to talk: §
+
+### Assistant commands
+
+When Assistant is on, say the command exactly:
+
+| Command | Does |
+| --- | --- |
+| Computer | Continue the voice chat |
+| Computer refresh | Start a fresh voice chat |
+| Computer text | Start a fresh text chat |
+| Continue | Follow up on the active chat |
+| Computer cleanup | Rewrite selected text with Prime |
+
+Selected text is included when available.

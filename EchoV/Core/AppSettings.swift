@@ -342,15 +342,33 @@ final class AppSettings {
         }
     }
 
-    var isVoiceModePromptPreviewEnabled: Bool {
+    var isLocalVoiceModePromptPreviewEnabled: Bool {
         didSet {
-            userDefaults.set(isVoiceModePromptPreviewEnabled, forKey: Keys.isVoiceModePromptPreviewEnabled)
+            userDefaults.set(isLocalVoiceModePromptPreviewEnabled, forKey: Keys.isLocalVoiceModePromptPreviewEnabled)
+        }
+    }
+
+    var isCloudVoiceModePromptPreviewEnabled: Bool {
+        didSet {
+            userDefaults.set(isCloudVoiceModePromptPreviewEnabled, forKey: Keys.isCloudVoiceModePromptPreviewEnabled)
         }
     }
 
     var isVoiceModeHUDEnabled: Bool {
         didSet {
             userDefaults.set(isVoiceModeHUDEnabled, forKey: Keys.isVoiceModeHUDEnabled)
+        }
+    }
+
+    var isAssistantConfirmationSoundEnabled: Bool {
+        didSet {
+            userDefaults.set(isAssistantConfirmationSoundEnabled, forKey: Keys.isAssistantConfirmationSoundEnabled)
+        }
+    }
+
+    var assistantConfirmationSoundStyle: AssistantConfirmationSoundStyle {
+        didSet {
+            userDefaults.set(assistantConfirmationSoundStyle.rawValue, forKey: Keys.assistantConfirmationSoundStyle)
         }
     }
 
@@ -618,8 +636,18 @@ final class AppSettings {
             range: 3.0...15.0
         )
         self.voiceModeResponseBackend = Self.loadVoiceModeResponseBackend(from: userDefaults)
-        self.isVoiceModePromptPreviewEnabled = userDefaults.object(forKey: Keys.isVoiceModePromptPreviewEnabled) as? Bool ?? true
+        let legacyPromptPreviewEnabled = userDefaults.object(forKey: Keys.isVoiceModePromptPreviewEnabled) as? Bool
+        self.isLocalVoiceModePromptPreviewEnabled = userDefaults.object(
+            forKey: Keys.isLocalVoiceModePromptPreviewEnabled
+        ) as? Bool ?? legacyPromptPreviewEnabled ?? true
+        self.isCloudVoiceModePromptPreviewEnabled = userDefaults.object(
+            forKey: Keys.isCloudVoiceModePromptPreviewEnabled
+        ) as? Bool ?? true
         self.isVoiceModeHUDEnabled = userDefaults.object(forKey: Keys.isVoiceModeHUDEnabled) as? Bool ?? true
+        self.isAssistantConfirmationSoundEnabled = userDefaults.object(forKey: Keys.isAssistantConfirmationSoundEnabled) as? Bool ?? true
+        self.assistantConfirmationSoundStyle = AssistantConfirmationSoundStyle.load(
+            from: userDefaults.string(forKey: Keys.assistantConfirmationSoundStyle)
+        )
         self.textResponseStreamsReplies = userDefaults.object(forKey: Keys.textResponseStreamsReplies) as? Bool ?? true
         self.textResponseShowsReasoning = userDefaults.object(forKey: Keys.textResponseShowsReasoning) as? Bool ?? false
         self.voiceModeCloudBaseURL = userDefaults.string(forKey: Keys.voiceModeCloudBaseURL) ?? ""
@@ -961,7 +989,11 @@ private enum Keys {
     static let voiceModeNoSpeechTimeoutSeconds = "settings.voiceModeNoSpeechTimeoutSeconds"
     static let voiceModeResponseBackend = "settings.voiceModeResponseBackend"
     static let isVoiceModePromptPreviewEnabled = "settings.isVoiceModePromptPreviewEnabled"
+    static let isLocalVoiceModePromptPreviewEnabled = "settings.isLocalVoiceModePromptPreviewEnabled"
+    static let isCloudVoiceModePromptPreviewEnabled = "settings.isCloudVoiceModePromptPreviewEnabled"
     static let isVoiceModeHUDEnabled = "settings.isVoiceModeHUDEnabled"
+    static let isAssistantConfirmationSoundEnabled = "settings.isAssistantConfirmationSoundEnabled"
+    static let assistantConfirmationSoundStyle = "settings.assistantConfirmationSoundStyle"
     static let textResponseStreamsReplies = "settings.textResponseStreamsReplies"
     static let textResponseShowsReasoning = "settings.textResponseShowsReasoning"
     static let voiceModeCloudBaseURL = "settings.voiceModeCloudBaseURL"

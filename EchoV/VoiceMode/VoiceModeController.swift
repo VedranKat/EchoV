@@ -28,6 +28,7 @@ final class VoiceModeController {
         _ promptText: String,
         _ includesSelectionContext: Bool
     ) async -> String?
+    private var playConfirmationCue: @MainActor (_ command: VoiceModeActivationCommand) async -> Void
     private var responseBackendValidationError: @MainActor () -> AppError?
     private var verifyCommandSpeaker: @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool
     private var verifyRequestSpeaker: @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool
@@ -65,6 +66,7 @@ final class VoiceModeController {
             _ promptText: String,
             _ includesSelectionContext: Bool
         ) async -> String? = { _, promptText, _ in promptText },
+        playConfirmationCue: @escaping @MainActor (_ command: VoiceModeActivationCommand) async -> Void = { _ in },
         responseBackendValidationError: @escaping @MainActor () -> AppError? = { nil },
         verifyCommandSpeaker: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool = { _ in true },
         verifyRequestSpeaker: @escaping @MainActor (_ recordedAudio: RecordedAudio) async throws -> Bool = { _ in true },
@@ -84,6 +86,7 @@ final class VoiceModeController {
         self.onAssistantSessionRequest = onAssistantSessionRequest
         self.selectedTextProvider = selectedTextProvider
         self.promptPreview = promptPreview
+        self.playConfirmationCue = playConfirmationCue
         self.responseBackendValidationError = responseBackendValidationError
         self.verifyCommandSpeaker = verifyCommandSpeaker
         self.verifyRequestSpeaker = verifyRequestSpeaker
@@ -125,6 +128,12 @@ final class VoiceModeController {
         ) async -> String?
     ) {
         self.promptPreview = promptPreview
+    }
+
+    func setConfirmationCuePlayer(
+        _ playConfirmationCue: @escaping @MainActor (_ command: VoiceModeActivationCommand) async -> Void
+    ) {
+        self.playConfirmationCue = playConfirmationCue
     }
 
     func setResponseBackendValidationError(_ responseBackendValidationError: @escaping @MainActor () -> AppError?) {
@@ -184,7 +193,7 @@ final class VoiceModeController {
         appState.lastError = nil
         setState(
             .voiceModeWakeListening,
-            detail: detail ?? "Assistant is listening for Computer, Computer text, Continue, Computer new, or Computer cleanup."
+            detail: detail ?? "Assistant is listening for Computer, Computer refresh, Computer text, Continue, or Computer cleanup."
         )
 
         do {
@@ -270,6 +279,7 @@ final class VoiceModeController {
 
             if let command = WakePhraseMatcher.activationCommand(for: transcript.text) {
                 if command == .cleanUpSelection {
+                    await playConfirmationCue(command)
                     await cleanUpSelection()
                     return
                 }
@@ -309,6 +319,7 @@ final class VoiceModeController {
         promptSpeechStarted = false
         appState.lastError = nil
         setState(.voiceModePromptListening, detail: "\(command.displayName). Listening for your request.")
+        await playConfirmationCue(command)
         startNoSpeechTimeout(runID: runID, command: command)
 
         do {

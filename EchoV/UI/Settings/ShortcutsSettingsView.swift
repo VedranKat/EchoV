@@ -30,7 +30,7 @@ struct ShortcutsSettingsView: View {
                     }
                 }
 
-                SettingsCard("Assistant Commands", subtitle: "Fixed phrases that Assistant listens for while EchoV is running.") {
+                SettingsCard("Assistant Commands", subtitle: "Fixed phrases. Selected text is included when available.") {
                     VStack(spacing: 12) {
                         ForEach(Array(voiceCommands.enumerated()), id: \.element.title) { index, command in
                             VoiceCommandReferenceRow(
@@ -95,17 +95,22 @@ struct ShortcutsSettingsView: View {
             VoiceCommandReference(
                 icon: "speaker.wave.2.bubble",
                 title: "Computer",
-                subtitle: "Starts a spoken-answer Assistant request."
+                subtitle: "Continues the voice chat."
+            ),
+            VoiceCommandReference(
+                icon: "arrow.clockwise",
+                title: "Computer refresh",
+                subtitle: "Starts a fresh voice chat."
             ),
             VoiceCommandReference(
                 icon: "text.bubble",
                 title: "Computer text",
-                subtitle: "Starts a text-response session."
+                subtitle: "Starts a fresh text chat."
             ),
             VoiceCommandReference(
                 icon: "arrowshape.turn.up.right",
                 title: "Continue",
-                subtitle: "Adds a follow-up to the latest text-response session."
+                subtitle: "Follows up on the active chat."
             ),
             VoiceCommandReference(
                 icon: "wand.and.sparkles",
