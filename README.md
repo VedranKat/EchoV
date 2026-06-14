@@ -14,6 +14,11 @@ To build a `.app` bundle:
 bash Scripts/build-app.sh
 ```
 
+The app build downloads the pinned macOS arm64 ONNX Runtime C package into
+`.build-deps/onnxruntime/` when it is not already cached. Set
+`SPEAKER_VERIFIER_ORT_DIR` to use a local ONNX Runtime package, or set
+`SPEAKER_VERIFIER_ORT_AUTO_DOWNLOAD=0` for offline builds.
+
 The bundle is written to `dist/EchoV.app` and ad-hoc signed by default. To sign with a local identity:
 
 ```sh
