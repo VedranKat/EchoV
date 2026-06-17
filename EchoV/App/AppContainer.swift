@@ -26,6 +26,7 @@ final class AppContainer {
         case voiceGate
         case voiceMode
         case liveSubtitles
+        case voiceProfileEnrollment
     }
 
     private struct LocalTextGenerationEngineKey: Equatable {
@@ -551,10 +552,15 @@ final class AppContainer {
             return
         }
 
-        guard recordingTrigger == nil, appState.state.canStartRecording else {
+        guard makeVoiceModeYieldToManualRecordingIfNeeded(),
+              recordingTrigger == nil,
+              appState.state.canStartRecording
+        else {
             appState.lastError = .recordingFailed(details: "Stop the current recording before enrolling a voice profile.")
             return
         }
+
+        recordingTrigger = .voiceProfileEnrollment
 
         do {
             voiceProfileEnrollmentRecording = try await voiceProfileEnrollmentRecorder.start()
@@ -563,12 +569,16 @@ final class AppContainer {
             appState.lastDetail = "Recording your voice profile. Speak naturally for at least a few seconds."
             setState(.recording(startedAt: Date()))
         } catch let error as AppError {
+            recordingTrigger = nil
             appState.lastError = error
             setState(.failed(error))
+            await startVoiceModeAfterCurrentTaskIfNeeded()
         } catch {
+            recordingTrigger = nil
             let appError = AppError.recordingFailed(details: error.localizedDescription)
             appState.lastError = appError
             setState(.failed(appError))
+            await startVoiceModeAfterCurrentTaskIfNeeded()
         }
     }
 
@@ -592,24 +602,30 @@ final class AppContainer {
             temporaryAudioStore.delete([recordedAudio.fileURL])
 
             isVoiceProfileEnrollmentProcessing = false
+            recordingTrigger = nil
             appState.lastError = nil
             appState.lastDetail = "Voice profile enrolled."
             setState(.completed(Transcript(text: "Voice profile enrolled.", segments: [])))
+            await startVoiceModeAfterCurrentTaskIfNeeded()
         } catch let error as AppError {
             isVoiceProfileEnrollmentRecording = false
             isVoiceProfileEnrollmentProcessing = false
             voiceProfileEnrollmentRecording = nil
+            recordingTrigger = nil
             DiagnosticLog.write("Voice profile enrollment AppError: \(error.userMessage) details=\(error.technicalDetails ?? "none")")
             appState.lastError = error
             setState(.failed(error))
+            await startVoiceModeAfterCurrentTaskIfNeeded()
         } catch {
             isVoiceProfileEnrollmentRecording = false
             isVoiceProfileEnrollmentProcessing = false
             voiceProfileEnrollmentRecording = nil
+            recordingTrigger = nil
             let appError = AppError.speakerVerificationFailed(details: error.localizedDescription)
             DiagnosticLog.write("Voice profile enrollment Error: \(error.localizedDescription)")
             appState.lastError = appError
             setState(.failed(appError))
+            await startVoiceModeAfterCurrentTaskIfNeeded()
         }
     }
 
@@ -2094,6 +2110,8 @@ final class AppContainer {
         case .voiceGate:
             return
         case .liveSubtitles:
+            return
+        case .voiceProfileEnrollment:
             return
         }
     }
