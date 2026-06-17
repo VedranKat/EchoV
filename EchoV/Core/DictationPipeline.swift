@@ -252,6 +252,31 @@ final class DictationPipeline {
         }
     }
 
+    @discardableResult
+    func insertReplacementText(_ text: String) async throws -> Transcript {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw AppError.voiceModeResponseFailed(details: "The edited replacement text was empty.")
+        }
+
+        do {
+            setState(.inserting)
+            _ = try await insertion.insert(text)
+            let finalTranscript = Transcript(text: text)
+            if isHistoryEnabled() {
+                await history.append(finalTranscript)
+            }
+            setState(.completed(finalTranscript))
+            return finalTranscript
+        } catch let error as AppError {
+            fail(error)
+            throw error
+        } catch {
+            let appError = AppError.unknown(details: error.localizedDescription)
+            fail(appError)
+            throw appError
+        }
+    }
+
     private func fail(_ error: AppError) {
         appState.lastError = error
         setState(.failed(error))

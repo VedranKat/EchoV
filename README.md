@@ -49,5 +49,6 @@ When Assistant is on, say the command exactly:
 | Computer text | Start a fresh text chat |
 | Continue | Follow up on the active chat |
 | Computer cleanup | Rewrite selected text with Prime |
+| Computer edit | Change selected text using your spoken instruction |
 
 Selected text is included when available.

@@ -643,7 +643,7 @@ final class AppSettings {
         self.isCloudVoiceModePromptPreviewEnabled = userDefaults.object(
             forKey: Keys.isCloudVoiceModePromptPreviewEnabled
         ) as? Bool ?? true
-        self.isVoiceModeHUDEnabled = userDefaults.object(forKey: Keys.isVoiceModeHUDEnabled) as? Bool ?? true
+        self.isVoiceModeHUDEnabled = userDefaults.object(forKey: Keys.isVoiceModeHUDEnabled) as? Bool ?? false
         self.isAssistantConfirmationSoundEnabled = userDefaults.object(forKey: Keys.isAssistantConfirmationSoundEnabled) as? Bool ?? true
         self.assistantConfirmationSoundStyle = AssistantConfirmationSoundStyle.load(
             from: userDefaults.string(forKey: Keys.assistantConfirmationSoundStyle)

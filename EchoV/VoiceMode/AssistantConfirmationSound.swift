@@ -64,7 +64,7 @@ enum AssistantConfirmationCue: String, Sendable {
             return .textReady
         case .continueTextResponse:
             return activeSessionKind == .text ? .textReady : .voiceReady
-        case .cleanUpSelection:
+        case .cleanUpSelection, .editSelection:
             return .actionAccepted
         }
     }

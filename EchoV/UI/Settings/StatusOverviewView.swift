@@ -197,7 +197,7 @@ struct StatusOverviewView: View {
     private func rejectedWakeSubtitle(for reason: VoiceModeRejectedWakeTranscript.Reason) -> String {
         switch reason {
         case .notExactActivationCommand:
-            return "Commands must be exactly Computer, Computer refresh, Computer text, Continue, or Computer cleanup."
+            return "Commands must be exactly Computer, Computer refresh, Computer text, Continue, Computer cleanup, or Computer edit."
         case .durationExceeded:
             return "Wake command audio exceeded the short command window."
         }
@@ -269,9 +269,9 @@ struct StatusOverviewView: View {
         case .voiceGateRecording:
             "Speech detected. EchoV will transcribe after the configured silence timeout."
         case .voiceModeWakeListening:
-            "Assistant is listening for Computer, Computer refresh, Computer text, Continue, or Computer cleanup."
+            "Assistant is listening for Computer, Computer refresh, Computer text, Continue, Computer cleanup, or Computer edit."
         case .voiceModeCheckingWakePhrase:
-            "Checking whether the last phrase was Computer, Computer refresh, Computer text, Continue, or Computer cleanup."
+            "Checking whether the last phrase was Computer, Computer refresh, Computer text, Continue, Computer cleanup, or Computer edit."
         case .voiceModePromptListening:
             "Activation command detected. Say your request."
         case .voiceModePromptRecording:

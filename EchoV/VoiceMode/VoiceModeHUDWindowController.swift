@@ -247,7 +247,7 @@ private struct VoiceModeHUDView: View {
 
         switch container.appState.state {
         case .voiceModeWakeListening:
-            return "Listening for Computer, Computer refresh, Computer text, Continue, or Computer cleanup."
+            return "Listening for Computer, Computer refresh, Computer text, Continue, Computer cleanup, or Computer edit."
         case .voiceModePromptListening:
             return "Say your request."
         case .voiceModePromptRecording:

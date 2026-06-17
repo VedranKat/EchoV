@@ -332,12 +332,16 @@ final class AppContainer {
             container.recordingTrigger = nil
             container.settings.isLiveSubtitlesEnabled = false
         }
-        voiceModeController.setOnAssistantSessionRequest { [weak container] command, userText in
+        voiceModeController.setOnAssistantSessionRequest { [weak container] command, userText, selectedText in
             guard let container else {
                 throw AppError.voiceModeResponseFailed(details: "Assistant session storage is unavailable.")
             }
 
-            return try await container.performVoiceModeAssistantTurn(command: command, userText: userText)
+            return try await container.performVoiceModeAssistantTurn(
+                command: command,
+                userText: userText,
+                selectedText: selectedText
+            )
         }
         voiceModeController.setOnCleanUpSelection { [weak container] in
             await container?.cleanUpSelectedText() ?? false
@@ -1115,7 +1119,8 @@ final class AppContainer {
 
     func performVoiceModeAssistantTurn(
         command: VoiceModeActivationCommand,
-        userText: String
+        userText: String,
+        selectedText: String? = nil
     ) async throws -> VoiceModeAssistantTurnResult {
         let trimmedText = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
@@ -1169,7 +1174,46 @@ final class AppContainer {
 
         case .cleanUpSelection:
             throw AppError.voiceModeResponseFailed(details: "Computer cleanup does not generate an assistant response.")
+
+        case .editSelection:
+            guard let selectedText = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !selectedText.isEmpty
+            else {
+                throw AppError.voiceModeResponseFailed(details: "No selected text is available to edit.")
+            }
+
+            let editedText = try await editSelectedText(
+                selectedText: selectedText,
+                instruction: trimmedText
+            )
+            return VoiceModeAssistantTurnResult(responseText: editedText, delivery: .textResponse)
         }
+    }
+
+    private func editSelectedText(selectedText: String, instruction: String) async throws -> String {
+        if let validationError = voiceModeResponseBackendValidationError() {
+            throw validationError
+        }
+
+        let request = VoiceModeEditPrompt(
+            selectedText: selectedText,
+            instruction: instruction
+        ).chatGenerationRequest()
+        let budgetedRequest = AssistantContextWindow.reduce(
+            request,
+            configuration: AssistantContextWindowConfiguration(
+                contextWindowTokens: assistantContextWindowTokens(),
+                responseReserveTokens: request.maxTokens
+            )
+        )
+        let response = try await currentVoiceModeTextGenerationEngine().generate(request: budgetedRequest)
+        let editedText = response.content
+        guard !editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty edit.")
+        }
+
+        try await pipeline.insertReplacementText(editedText)
+        return editedText
     }
 
     @discardableResult

@@ -90,6 +90,37 @@ final class VoiceModeAssistantRoutingTests: XCTestCase {
     }
 
     @MainActor
+    func testComputerEditRequiresSelectedText() async {
+        let container = AppContainer.bootstrap()
+
+        do {
+            _ = try await container.performVoiceModeAssistantTurn(command: .editSelection, userText: "Make it shorter")
+            XCTFail("Computer edit should require selected text.")
+        } catch AppError.voiceModeResponseFailed(let details) {
+            XCTAssertEqual(details, "No selected text is available to edit.")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertTrue(container.textResponseSessions.sessions.isEmpty)
+    }
+
+    @MainActor
+    func testComputerEditDoesNotCreateAssistantSessionBeforeGeneration() async {
+        let container = AppContainer.bootstrap()
+
+        await ignoreGenerationFailure {
+            try await container.performVoiceModeAssistantTurn(
+                command: .editSelection,
+                userText: "Make it shorter",
+                selectedText: "This is selected text that should be rewritten."
+            )
+        }
+
+        XCTAssertTrue(container.textResponseSessions.sessions.isEmpty)
+    }
+
+    @MainActor
     private func ignoreGenerationFailure(_ operation: () async throws -> VoiceModeAssistantTurnResult) async {
         do {
             _ = try await operation()

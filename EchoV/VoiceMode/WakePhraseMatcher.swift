@@ -5,6 +5,7 @@ enum VoiceModeActivationCommand: Equatable, Sendable {
     case textResponse
     case continueTextResponse
     case cleanUpSelection
+    case editSelection
     case refreshSession
 
     var phrase: String {
@@ -17,6 +18,8 @@ enum VoiceModeActivationCommand: Equatable, Sendable {
             return "continue"
         case .cleanUpSelection:
             return "computer cleanup"
+        case .editSelection:
+            return "computer edit"
         case .refreshSession:
             return "computer refresh"
         }
@@ -26,6 +29,8 @@ enum VoiceModeActivationCommand: Equatable, Sendable {
         switch self {
         case .cleanUpSelection:
             return "Computer Cleanup"
+        case .editSelection:
+            return "Computer Edit"
         case .spoken, .textResponse, .continueTextResponse, .refreshSession:
             return phrase.capitalized
         }
@@ -35,7 +40,7 @@ enum VoiceModeActivationCommand: Equatable, Sendable {
         switch self {
         case .spoken, .refreshSession:
             return .spoken
-        case .textResponse, .continueTextResponse, .cleanUpSelection:
+        case .textResponse, .continueTextResponse, .cleanUpSelection, .editSelection:
             return .textResponse
         }
     }
@@ -47,6 +52,7 @@ enum WakePhraseMatcher {
     static let continueTextResponseActivationPhrase = "continue"
     static let cleanUpSelectionActivationPhrase = ["computer", "cleanup"]
     static let cleanUpSelectionSplitActivationPhrase = ["computer", "clean", "up"]
+    static let editSelectionActivationPhrase = ["computer", "edit"]
     static let refreshSessionActivationPhrase = ["computer", "refresh"]
 
     static func activationCommand(for text: String) -> VoiceModeActivationCommand? {
@@ -60,6 +66,8 @@ enum WakePhraseMatcher {
         case cleanUpSelectionActivationPhrase,
              cleanUpSelectionSplitActivationPhrase:
             return .cleanUpSelection
+        case editSelectionActivationPhrase:
+            return .editSelection
         case refreshSessionActivationPhrase:
             return .refreshSession
         default:

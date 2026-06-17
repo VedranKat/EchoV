@@ -13,6 +13,7 @@ final class AssistantConfirmationSoundTests: XCTestCase {
         XCTAssertEqual(AssistantConfirmationCue.cue(for: .refreshSession, activeSessionKind: nil), .voiceRefresh)
         XCTAssertEqual(AssistantConfirmationCue.cue(for: .textResponse, activeSessionKind: .voice), .textReady)
         XCTAssertEqual(AssistantConfirmationCue.cue(for: .cleanUpSelection, activeSessionKind: .text), .actionAccepted)
+        XCTAssertEqual(AssistantConfirmationCue.cue(for: .editSelection, activeSessionKind: .text), .actionAccepted)
     }
 
     func testContinueCueFollowsActiveSessionKind() {

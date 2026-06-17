@@ -14,6 +14,8 @@ final class WakePhraseMatcherTests: XCTestCase {
         XCTAssertEqual(WakePhraseMatcher.activationCommand(for: "Computer cleanup."), .cleanUpSelection)
         XCTAssertEqual(WakePhraseMatcher.activationCommand(for: "  computer, clean up!  "), .cleanUpSelection)
         XCTAssertEqual(WakePhraseMatcher.activationCommand(for: "computer clean-up"), .cleanUpSelection)
+        XCTAssertEqual(WakePhraseMatcher.activationCommand(for: "Computer edit."), .editSelection)
+        XCTAssertEqual(WakePhraseMatcher.activationCommand(for: "  computer, edit!  "), .editSelection)
     }
 
     func testRejectsActivationCommandsInsideLongerPhrases() {
@@ -31,6 +33,9 @@ final class WakePhraseMatcherTests: XCTestCase {
         XCTAssertNil(WakePhraseMatcher.activationCommand(for: "computer clean this up"))
         XCTAssertNil(WakePhraseMatcher.activationCommand(for: "computer cleanup please"))
         XCTAssertNil(WakePhraseMatcher.activationCommand(for: "please computer cleanup"))
+        XCTAssertNil(WakePhraseMatcher.activationCommand(for: "computer edit this"))
+        XCTAssertNil(WakePhraseMatcher.activationCommand(for: "computer edit please"))
+        XCTAssertNil(WakePhraseMatcher.activationCommand(for: "please computer edit"))
     }
 
     func testRejectsSimilarButDifferentTranscripts() {

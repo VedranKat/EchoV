@@ -116,6 +116,11 @@ struct ShortcutsSettingsView: View {
                 icon: "wand.and.sparkles",
                 title: "Computer cleanup",
                 subtitle: "Rewrites selected text with Prime."
+            ),
+            VoiceCommandReference(
+                icon: "square.and.pencil",
+                title: "Computer edit",
+                subtitle: "Changes selected text using your spoken instruction."
             )
         ]
     }

@@ -21,7 +21,7 @@ final class VoiceModeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.voiceModeResponseBackend, .localLlama)
         XCTAssertTrue(settings.isLocalVoiceModePromptPreviewEnabled)
         XCTAssertTrue(settings.isCloudVoiceModePromptPreviewEnabled)
-        XCTAssertTrue(settings.isVoiceModeHUDEnabled)
+        XCTAssertFalse(settings.isVoiceModeHUDEnabled)
         XCTAssertTrue(settings.isAssistantConfirmationSoundEnabled)
         XCTAssertEqual(settings.assistantConfirmationSoundStyle, .starship)
         XCTAssertTrue(settings.textResponseStreamsReplies)

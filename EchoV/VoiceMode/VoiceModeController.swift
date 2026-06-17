@@ -20,7 +20,8 @@ final class VoiceModeController {
     private let speechSpeed: @MainActor () -> Double
     private var onAssistantSessionRequest: @MainActor (
         _ command: VoiceModeActivationCommand,
-        _ userText: String
+        _ userText: String,
+        _ selectedText: String?
     ) async throws -> VoiceModeAssistantTurnResult
     private var selectedTextProvider: @MainActor () async -> String?
     private var promptPreview: @MainActor (
@@ -56,8 +57,9 @@ final class VoiceModeController {
         speechSpeed: @escaping @MainActor () -> Double,
         onAssistantSessionRequest: @escaping @MainActor (
             _ command: VoiceModeActivationCommand,
-            _ userText: String
-        ) async throws -> VoiceModeAssistantTurnResult = { _, _ in
+            _ userText: String,
+            _ selectedText: String?
+        ) async throws -> VoiceModeAssistantTurnResult = { _, _, _ in
             throw AppError.voiceModeResponseNotConfigured
         },
         selectedTextProvider: @escaping @MainActor () async -> String? = { nil },
@@ -106,7 +108,8 @@ final class VoiceModeController {
     func setOnAssistantSessionRequest(
         _ onAssistantSessionRequest: @escaping @MainActor (
             _ command: VoiceModeActivationCommand,
-            _ userText: String
+            _ userText: String,
+            _ selectedText: String?
         ) async throws -> VoiceModeAssistantTurnResult
     ) {
         self.onAssistantSessionRequest = onAssistantSessionRequest
@@ -193,7 +196,7 @@ final class VoiceModeController {
         appState.lastError = nil
         setState(
             .voiceModeWakeListening,
-            detail: detail ?? "Assistant is listening for Computer, Computer refresh, Computer text, Continue, or Computer cleanup."
+            detail: detail ?? "Assistant is listening for Computer, Computer refresh, Computer text, Continue, Computer cleanup, or Computer edit."
         )
 
         do {
@@ -285,6 +288,13 @@ final class VoiceModeController {
                 }
 
                 let selectedText = await selectedTextContext(for: command)
+                if command == .editSelection,
+                   selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+                {
+                    setState(.cancelled, detail: "No selected text is available to edit.")
+                    await startWakeListening(detail: "No selected text is available to edit. Listening again.")
+                    return
+                }
                 await startPromptListening(command: command, selectedText: selectedText)
             } else {
                 let rejectedText = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -404,25 +414,35 @@ final class VoiceModeController {
                 status: "Transcribing request..."
             )
             let promptText = promptEndingPolicy.promptText(from: transcript.text)
-            let composedText = VoiceModePromptComposer.compose(
-                userPrompt: promptText.text,
-                selectedText: selectedText
-            )
+            let textForReview: String
+            if command == .editSelection {
+                textForReview = promptText.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                textForReview = VoiceModePromptComposer.compose(
+                    userPrompt: promptText.text,
+                    selectedText: selectedText
+                )
+            }
             guard isEnabled, isCurrentRun(runID) else {
                 return
             }
 
-            guard !composedText.isEmpty else {
+            guard !textForReview.isEmpty else {
                 setState(.cancelled, detail: "No request was detected.")
                 await startWakeListening()
                 return
             }
 
-            let reviewedPrompt = await promptPreview(
-                command,
-                composedText,
-                selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            )
+            let reviewedPrompt: String?
+            if command == .editSelection {
+                reviewedPrompt = textForReview
+            } else {
+                reviewedPrompt = await promptPreview(
+                    command,
+                    textForReview,
+                    selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                )
+            }
 
             guard !Task.isCancelled, isEnabled, isCurrentRun(runID) else {
                 return
@@ -441,20 +461,22 @@ final class VoiceModeController {
                 return
             }
 
-            setState(.voiceModeThinking, detail: "Generating response...")
+            setState(.voiceModeThinking, detail: command == .editSelection ? "Editing selected text..." : "Generating response...")
             if let validationError = responseBackendValidationError() {
                 throw validationError
             }
 
-            let result = try await onAssistantSessionRequest(command, userText)
+            let result = try await onAssistantSessionRequest(command, userText, selectedText)
             let delivery = result.delivery
-            let response = result.responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let response = command == .editSelection
+                ? result.responseText
+                : result.responseText.trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard isEnabled, isCurrentRun(runID) else {
                 return
             }
 
-            guard !response.isEmpty else {
+            guard !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw AppError.voiceModeResponseFailed(details: "The response provider returned an empty Assistant response.")
             }
 
@@ -480,7 +502,10 @@ final class VoiceModeController {
                 return
             }
 
-            setState(.completed(Transcript(text: response, segments: [])), detail: "Assistant response completed.")
+            setState(
+                .completed(Transcript(text: response, segments: [])),
+                detail: command == .editSelection ? "Selected text edited." : "Assistant response completed."
+            )
             await startWakeListening()
         } catch let error as AppError {
             guard isCurrentRun(runID) else {
