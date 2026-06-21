@@ -8,7 +8,7 @@ struct VoiceModeAssistantTurnResult: Sendable {
 @MainActor
 final class VoiceModeController {
     private static let wakePhraseSilenceTimeout: TimeInterval = 0.6
-    private static let maximumWakePhraseDuration: TimeInterval = 2.4
+    private static let maximumWakePhraseDuration: TimeInterval = 2.0
 
     private let appState: AppState
     private let capture: VoiceActivatedAudioCapture
@@ -203,7 +203,8 @@ final class VoiceModeController {
             try await capture.start(
                 configuration: VoiceGateCaptureConfiguration(
                     silenceTimeoutSeconds: Self.wakePhraseSilenceTimeout,
-                    sensitivity: .medium
+                    sensitivity: .medium,
+                    maximumDurationSeconds: Self.maximumWakePhraseDuration
                 ),
                 onSpeechStarted: { [weak self] _ in
                     guard let self, self.isCurrentRun(runID) else {
@@ -217,6 +218,20 @@ final class VoiceModeController {
                     self?.activeOperationTask = Task { @MainActor [weak self] in
                         await self?.handleWakePhraseCandidate(recordedAudio, runID: runID)
                     }
+                },
+                onMaximumSpeechDurationExceeded: { [weak self] in
+                    guard let self, self.isCurrentRun(runID) else {
+                        return
+                    }
+
+                    self.appState.recordRejectedWakeTranscript(VoiceModeRejectedWakeTranscript(
+                        text: "",
+                        reason: .durationExceeded
+                    ))
+                    self.setState(
+                        .voiceModeWakeListening,
+                        detail: "Long speech ignored. Listening for Computer, Computer refresh, Computer text, Continue, Computer cleanup, or Computer edit."
+                    )
                 },
                 onError: { [weak self] error in
                     guard let self, self.isCurrentRun(runID) else {

@@ -5,15 +5,34 @@ import Foundation
 struct VoiceGateCaptureConfiguration {
     let silenceTimeout: VoiceGateCaptureSilenceTimeout
     let sensitivity: VoiceGateSensitivity
+    let maximumDurationSeconds: TimeInterval?
 
-    init(silenceTimeoutSeconds: TimeInterval, sensitivity: VoiceGateSensitivity) {
+    init(
+        silenceTimeoutSeconds: TimeInterval,
+        sensitivity: VoiceGateSensitivity,
+        maximumDurationSeconds: TimeInterval? = nil
+    ) {
         self.silenceTimeout = .fixed(seconds: silenceTimeoutSeconds)
         self.sensitivity = sensitivity
+        self.maximumDurationSeconds = Self.normalizedMaximumDuration(maximumDurationSeconds)
     }
 
-    init(silenceTimeout: VoiceGateCaptureSilenceTimeout, sensitivity: VoiceGateSensitivity) {
+    init(
+        silenceTimeout: VoiceGateCaptureSilenceTimeout,
+        sensitivity: VoiceGateSensitivity,
+        maximumDurationSeconds: TimeInterval? = nil
+    ) {
         self.silenceTimeout = silenceTimeout
         self.sensitivity = sensitivity
+        self.maximumDurationSeconds = Self.normalizedMaximumDuration(maximumDurationSeconds)
+    }
+
+    private static func normalizedMaximumDuration(_ duration: TimeInterval?) -> TimeInterval? {
+        guard let duration else {
+            return nil
+        }
+
+        return max(0.1, duration)
     }
 }
 
@@ -58,6 +77,7 @@ final class VoiceActivatedAudioCapture {
         configuration: VoiceGateCaptureConfiguration,
         onSpeechStarted: @escaping @MainActor (Date) -> Void,
         onUtteranceEnded: @escaping @MainActor (RecordedAudio) -> Void,
+        onMaximumSpeechDurationExceeded: (@MainActor () -> Void)? = nil,
         onError: @escaping @MainActor (AppError) -> Void
     ) async throws {
         guard engine == nil else {
@@ -93,6 +113,7 @@ final class VoiceActivatedAudioCapture {
                 self?.stopEngine(cancelSession: false)
                 onUtteranceEnded(recordedAudio)
             },
+            onMaximumSpeechDurationExceeded: onMaximumSpeechDurationExceeded,
             onError: { [weak self] error in
                 self?.stop()
                 onError(error)
@@ -182,7 +203,7 @@ private func makeVoiceGateTapHandler(session: VoiceGateCaptureSession) -> AVAudi
     }
 }
 
-private final class VoiceGateCaptureSession: @unchecked Sendable {
+final class VoiceGateCaptureSession: @unchecked Sendable {
     private static let speechTriggerDuration: TimeInterval = 0.16
     private static let minimumSpeechDuration: TimeInterval = 0.35
     private static let preRollDuration: TimeInterval = 0.5
@@ -191,6 +212,7 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
     private let configuration: VoiceGateCaptureConfiguration
     private let onSpeechStarted: @MainActor (Date) -> Void
     private let onUtteranceEnded: @MainActor (RecordedAudio) -> Void
+    private let onMaximumSpeechDurationExceeded: (@MainActor () -> Void)?
     private let onError: @MainActor (AppError) -> Void
 
     private var audioFile: AVAudioFile?
@@ -201,7 +223,9 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
     private var aboveThresholdStartedAt: Date?
     private var speechStartedAt: Date?
     private var lastSpeechAt: Date?
+    private var ignoredSpeechLastSeenAt: Date?
     private var hasCompletedUtterance = false
+    private var isIgnoringSpeechUntilSilence = false
     private var isCancelled = false
 
     init(
@@ -209,12 +233,14 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
         configuration: VoiceGateCaptureConfiguration,
         onSpeechStarted: @escaping @MainActor (Date) -> Void,
         onUtteranceEnded: @escaping @MainActor (RecordedAudio) -> Void,
+        onMaximumSpeechDurationExceeded: (@MainActor () -> Void)? = nil,
         onError: @escaping @MainActor (AppError) -> Void
     ) throws {
         self.format = format
         self.configuration = configuration
         self.onSpeechStarted = onSpeechStarted
         self.onUtteranceEnded = onUtteranceEnded
+        self.onMaximumSpeechDurationExceeded = onMaximumSpeechDurationExceeded
         self.onError = onError
         try resetCandidate(startedAt: Date())
     }
@@ -231,8 +257,21 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
         )
         let isAboveThreshold = decibels >= threshold
 
+        if isIgnoringSpeechUntilSilence {
+            updateIgnoredSpeechState(isAboveThreshold: isAboveThreshold, decibels: decibels, receivedAt: receivedAt)
+            return
+        }
+
         if speechStartedAt == nil, aboveThresholdStartedAt == nil, !isAboveThreshold {
             rotateCandidateIfNeeded(at: receivedAt)
+        }
+
+        if shouldDiscardForMaximumDuration(receivedAt: receivedAt) {
+            discardCandidateUntilSilence(lastSpeechAt: receivedAt)
+            Task { @MainActor in
+                self.onMaximumSpeechDurationExceeded?()
+            }
+            return
         }
 
         do {
@@ -303,6 +342,44 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
         }
     }
 
+    private func updateIgnoredSpeechState(isAboveThreshold: Bool, decibels: Float, receivedAt: Date) {
+        if isAboveThreshold {
+            ignoredSpeechLastSeenAt = receivedAt
+            return
+        }
+
+        updateNoiseFloor(with: decibels)
+
+        guard let ignoredSpeechLastSeenAt else {
+            self.ignoredSpeechLastSeenAt = receivedAt
+            return
+        }
+
+        let silenceTimeoutSeconds = configuration.silenceTimeout.seconds(afterSpeechDuration: 0)
+        guard receivedAt.timeIntervalSince(ignoredSpeechLastSeenAt) >= silenceTimeoutSeconds else {
+            return
+        }
+
+        isIgnoringSpeechUntilSilence = false
+        self.ignoredSpeechLastSeenAt = nil
+        do {
+            try resetCandidate(startedAt: receivedAt)
+        } catch {
+            fail(.recordingFailed(details: error.localizedDescription))
+        }
+    }
+
+    private func shouldDiscardForMaximumDuration(receivedAt: Date) -> Bool {
+        guard let maximumDurationSeconds = configuration.maximumDurationSeconds,
+              let candidateStartedAt,
+              speechStartedAt != nil
+        else {
+            return false
+        }
+
+        return receivedAt.timeIntervalSince(candidateStartedAt) >= maximumDurationSeconds
+    }
+
     private func finishUtterance(endedAt: Date) {
         guard
             let speechStartedAt,
@@ -332,6 +409,22 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
     }
 
     private func discardCandidateAndListenAgain(startedAt: Date) {
+        discardCandidate()
+
+        do {
+            try resetCandidate(startedAt: startedAt)
+        } catch {
+            fail(.recordingFailed(details: error.localizedDescription))
+        }
+    }
+
+    private func discardCandidateUntilSilence(lastSpeechAt: Date) {
+        discardCandidate()
+        isIgnoringSpeechUntilSilence = true
+        ignoredSpeechLastSeenAt = lastSpeechAt
+    }
+
+    private func discardCandidate() {
         audioFile = nil
 
         if let candidateURL {
@@ -344,12 +437,6 @@ private final class VoiceGateCaptureSession: @unchecked Sendable {
         aboveThresholdStartedAt = nil
         speechStartedAt = nil
         lastSpeechAt = nil
-
-        do {
-            try resetCandidate(startedAt: startedAt)
-        } catch {
-            fail(.recordingFailed(details: error.localizedDescription))
-        }
     }
 
     private func rotateCandidateIfNeeded(at receivedAt: Date) {
